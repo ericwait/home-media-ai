@@ -9,6 +9,7 @@ __all__ = [
     "safe_filename",
     "format_file_size",
     "setup_temp_directory",
+    "find_media_files",
 ]
 
 from .logging import setup_logging
@@ -20,4 +21,5 @@ from .file_utils import (
     safe_filename,
     format_file_size,
     setup_temp_directory,
+    find_media_files,
 )

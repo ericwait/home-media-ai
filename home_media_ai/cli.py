@@ -23,9 +23,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .. import MediaAnalyzer, MediaDatabase
-from ..config import get_config, load_config_file
-from ..utils import setup_logging, format_file_size
+from home_media_ai import MediaAnalyzer, MediaDatabase
+from home_media_ai.config import get_config, load_config_file
+from home_media_ai.utils import setup_logging, format_file_size
 
 
 @click.group()
