@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Home Media AI specific
+*.db
+organized_photos/
+example_media.db
+quality_analysis.db
+test_api.db
