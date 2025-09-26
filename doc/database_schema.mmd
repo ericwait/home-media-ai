@@ -1,65 +1,103 @@
 erDiagram
-    TAXONOMIES {
-        INT id PK
-        VARCHAR name
-        TEXT description
-        VARCHAR source
-    }
-
-    TAXONOMY_VERSIONS {
-        INT id PK
-        INT taxonomy_id FK
-        DATETIME downloaded_at
-        VARCHAR file_name
-        BIGINT file_size
-        CHAR(64) checksum
-        TEXT notes
-    }
-
-    TAXONOMY_NODES {
-        INT id PK
-        INT taxonomy_id FK
-        INT parent_id FK
-        VARCHAR external_id
-        VARCHAR name
-        VARCHAR rank
-        VARCHAR status
-        JSONB metadata
-    }
-
+    %% Media Management Tables
     MEDIA_TYPES {
         INT id PK
-        VARCHAR(50) name
+        VARCHAR name "image, video, audio, document"
         TEXT description
-        VARCHAR(50) mime_group
+    }
+
+    FILE_FORMATS {
+        INT id PK
+        VARCHAR extension "jpg, tiff, mp4, wav"
+        VARCHAR mime_type "image/jpeg, video/mp4"
+        INT media_type_id FK
+        INT priority "processing hint"
+        TEXT description
+    }
+
+    EXTENSION_ALIASES {
+        VARCHAR alias "tif, JPG, jpeg"
+        VARCHAR canonical FK "references file_formats.extension"
     }
 
     MEDIA {
-        INT id PK
-        TEXT file_path
-        CHAR(64) file_hash
+        BIGINT id PK
+        VARCHAR base_path "filesystem agnostic directory"
+        VARCHAR filename "just filename portion"
+        TEXT file_path "computed: base_path + filename"
+        CHAR file_hash "SHA-256, unique"
         BIGINT file_size
-        VARCHAR(10) file_ext
         INT media_type_id FK
-        DATETIME created
-        BOOLEAN is_original
-        INT origin_id FK
-        JSONB metadata NOT NULL
+        INT format_id FK
+        DATETIME created "filesystem timestamp"
+        TIMESTAMP ingested_at "when discovered"
+        TIMESTAMP updated_at "last metadata update"
+        TIMESTAMP deleted_at "soft delete"
+        BIGINT origin_id FK "provenance chain"
+        BOOLEAN is_original "computed from origin_id"
+        BOOLEAN has_errors
+        JSON error_details
+        JSON metadata "EXIF, dimensions, codec, etc"
     }
 
-
-    MEDIA_TAXONOMY_LINKS {
+    %% Classification System Tables
+    CLASSIFICATION_SYSTEMS {
         INT id PK
-        INT media_id FK
-        INT taxonomy_node_id FK
-        VARCHAR assigned_by
-        DATETIME assigned_at
+        VARCHAR name "WFO, Geographic, Custom"
+        TEXT description
+        TEXT source_url
+        VARCHAR classification_type "biological, geographic, subject, custom"
     }
 
-    TAXONOMIES ||--o{ TAXONOMY_VERSIONS : "has versions"
-    TAXONOMIES ||--o{ TAXONOMY_NODES : "contains nodes"
-    TAXONOMY_NODES ||--o{ TAXONOMY_NODES : "parent-child"
+    CLASSIFICATION_VERSIONS {
+        INT id PK
+        INT system_id FK
+        VARCHAR version_string "2024-06, v1.2.3"
+        DATETIME downloaded_at
+        VARCHAR file_name
+        BIGINT file_size
+        CHAR checksum "SHA-256"
+        BOOLEAN is_current "one per system"
+        TEXT notes
+    }
+
+    CLASSIFICATION_NODES {
+        BIGINT id PK
+        INT version_id FK
+        VARCHAR external_id "WFO ID, GBIF key"
+        BIGINT parent_id FK
+        VARCHAR name "primary identifier"
+        VARCHAR rank "level in hierarchy"
+        VARCHAR status "accepted, synonym, deprecated"
+        VARCHAR authorship "authority attribution"
+        JSON metadata "system-specific data"
+    }
+
+    %% Future: Media-Classification Linking
+    MEDIA_CLASSIFICATION_LINKS {
+        BIGINT id PK
+        BIGINT media_id FK
+        BIGINT classification_node_id FK
+        VARCHAR assigned_by "system, user, ai"
+        DECIMAL confidence "0.00 to 1.00"
+        VARCHAR method "manual, ai_vision, geolocation"
+        TIMESTAMP assigned_at
+        TIMESTAMP verified_at
+        VARCHAR verified_by
+        VARCHAR status "pending, confirmed, disputed, rejected"
+        TEXT notes
+    }
+
+    %% Relationships
+    MEDIA_TYPES ||--o{ FILE_FORMATS : "categorizes"
+    FILE_FORMATS ||--o{ EXTENSION_ALIASES : "normalizes"
+    FILE_FORMATS ||--o{ MEDIA : "format_id → id"
     MEDIA_TYPES ||--o{ MEDIA : "media_type_id → id"
-    MEDIA ||--o{ MEDIA : "origin_id → id"
-    MEDIA ||--o{ MEDIA_TAXONOMY_LINKS : "linked to"
-    TAXONOMY_NODES ||--o{ MEDIA_TAXONOMY_LINKS : "linked from"
+    MEDIA ||--o{ MEDIA : "origin_id → id (provenance)"
+
+    CLASSIFICATION_SYSTEMS ||--o{ CLASSIFICATION_VERSIONS : "has versions"
+    CLASSIFICATION_VERSIONS ||--o{ CLASSIFICATION_NODES : "contains nodes"
+    CLASSIFICATION_NODES ||--o{ CLASSIFICATION_NODES : "parent_id → id (hierarchy)"
+
+    MEDIA ||--o{ MEDIA_CLASSIFICATION_LINKS : "can be classified"
+    CLASSIFICATION_NODES ||--o{ MEDIA_CLASSIFICATION_LINKS : "classifies media"
