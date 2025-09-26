@@ -5,7 +5,7 @@ This project combines authoritative plant taxonomy data with personal media coll
 
 ## 📖 Overview
 
-- **Taxonomy ingestion**: Scripts download and normalize the World Flora Online backbone into a MariaDB database.
+- **Taxonomy ingestion**: Scripts download and normalize the [World Flora Online](https://www.worldfloraonline.org/) backbone into a MariaDB database.
 - **Visualization**: Mermaid diagrams and other assets provide quick overviews of families, genera, and higher‑level groups.
 - **Image management** *(in progress)*: Local photos will be scraped, hashed, and linked into the taxonomy, with RAW files treated as canonical masters and derivatives tracked explicitly.
 - **Documentation**: High‑level guidance lives here. Each subdirectory will eventually have its own technical manual.
@@ -49,6 +49,6 @@ python src/python/import_flora_wfo_data.py
 ## 🔮 Roadmap
 
 - Phase I: Image metadata scraping (hashing, EXIF, RAW/derivative relationships)
-- Phase II: Linking images to taxa
+- Phase II: Linking images to taxonomy
 - Phase III: Richer visualization and query dashboards
 - Phase IV: Full documentation site
