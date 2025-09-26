@@ -1,0 +1,65 @@
+erDiagram
+    TAXONOMIES {
+        INT id PK
+        VARCHAR name
+        TEXT description
+        VARCHAR source
+    }
+
+    TAXONOMY_VERSIONS {
+        INT id PK
+        INT taxonomy_id FK
+        DATETIME downloaded_at
+        VARCHAR file_name
+        BIGINT file_size
+        CHAR(64) checksum
+        TEXT notes
+    }
+
+    TAXONOMY_NODES {
+        INT id PK
+        INT taxonomy_id FK
+        INT parent_id FK
+        VARCHAR external_id
+        VARCHAR name
+        VARCHAR rank
+        VARCHAR status
+        JSONB metadata
+    }
+
+    MEDIA_TYPES {
+        INT id PK
+        VARCHAR(50) name
+        TEXT description
+        VARCHAR(50) mime_group
+    }
+
+    MEDIA {
+        INT id PK
+        TEXT file_path
+        CHAR(64) file_hash
+        BIGINT file_size
+        VARCHAR(10) file_ext
+        INT media_type_id FK
+        DATETIME created
+        BOOLEAN is_original
+        INT origin_id FK
+        JSONB metadata NOT NULL
+    }
+
+
+    MEDIA_TAXONOMY_LINKS {
+        INT id PK
+        INT media_id FK
+        INT taxonomy_node_id FK
+        VARCHAR assigned_by
+        DATETIME assigned_at
+    }
+
+    TAXONOMIES ||--o{ TAXONOMY_VERSIONS : "has versions"
+    TAXONOMIES ||--o{ TAXONOMY_NODES : "contains nodes"
+    TAXONOMY_NODES ||--o{ TAXONOMY_NODES : "parent-child"
+    MEDIA_TYPES ||--o{ MEDIA : "media_type_id → id"
+    MEDIA ||--o{ MEDIA : "origin_id → id"
+    MEDIA ||--o{ MEDIA_TAXONOMY_LINKS : "linked to"
+    TAXONOMY_NODES ||--o{ MEDIA_TAXONOMY_LINKS : "linked from"
