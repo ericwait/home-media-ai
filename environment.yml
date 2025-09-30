@@ -1,0 +1,18 @@
+name: home-media-ai
+channels:
+  - conda-forge
+dependencies:
+  - certifi=2025.8.3
+  - jupyterlab=4.4.7
+  - mariadb=1.1.12
+  - matplotlib=3.10.6
+  - numpy=2.3.3
+  - opencv=4.12.0
+  - pandas=2.3.2
+  - pillow=11.3.0
+  - python=3.13.7
+  - scikit-learn=1.7.2
+  - seaborn=0.13.2
+  - sqlalchemy=2.0.43
+
+prefix: "D:\\mamba_envs\\home-media-ai"
