@@ -5,6 +5,8 @@ associated XMP sidecar files (commonly used by Lightroom and other
 photo management software).
 """
 
+
+import contextlib
 import decimal
 import logging
 import xml.etree.ElementTree as ET
@@ -84,15 +86,14 @@ class ExifExtractor:
 
         # Extract from embedded EXIF
         if HAS_PIL:
-            metadata.update(self._extract_exif_pil(file_path))
+            metadata |= self._extract_exif_pil(file_path)
 
         if HAS_EXIFREAD:
-            metadata.update(self._extract_exif_exifread(file_path))
+            metadata |= self._extract_exif_exifread(file_path)
 
         # Extract from XMP sidecar (overrides embedded data)
-        xmp_metadata = self._extract_xmp_sidecar(file_path)
-        if xmp_metadata:
-            metadata.update(xmp_metadata)
+        if xmp_metadata := self._extract_xmp_sidecar(file_path):
+            metadata |= xmp_metadata
 
         # For RAW files, use rawpy to get true image dimensions
         # This overrides any thumbnail dimensions that may have been extracted
@@ -124,11 +125,8 @@ class ExifExtractor:
             with Image.open(file_path) as img:
                 exif_data = None
                 if hasattr(img, 'getexif'):
-                    try:
+                    with contextlib.suppress(Exception):
                         exif_data = img.getexif()
-                    except Exception:
-                        pass
-
                 # Fall back to legacy API (JPEG only)
                 if exif_data is None and hasattr(img, '_getexif'):
                     try:
