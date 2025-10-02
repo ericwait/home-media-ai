@@ -1,4 +1,4 @@
-name: home-media-ai
+name: home-media-ai-stable
 channels:
   - conda-forge
 dependencies:
@@ -12,10 +12,10 @@ dependencies:
   - pandas=2.3.2
   - pillow=11.3.0
   - pytest=8.4.2
-  - python=3.13.7
+  - python=3.12
   - rawpy=0.25.1
   - scikit-learn=1.7.2
   - seaborn=0.13.2
   - sqlalchemy=2.0.43
 
-prefix: "D:\\mamba_envs\\home-media-ai"
+prefix: "D:\\mamba_envs\\home-media-ai-stable"
