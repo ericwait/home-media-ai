@@ -35,3 +35,4 @@ MANIFEST
 # Project directories
 data/
 analysis_results/
+.ipynb_checkpoints/
