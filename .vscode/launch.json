@@ -10,6 +10,26 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Debugger: scan_media",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/python/scripts/scan_media.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--root",
+                "${workspaceFolder}/src/python/tests/fixtures",
+                "--dry-run"
+            ],
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src/python"
+            },
+            "cwd": "${workspaceFolder}/src/python",
+            "stopOnEntry": false,
+            "logToFile": true,
+            "showReturnValue": true
         }
     ]
 }
