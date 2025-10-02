@@ -1,4 +1,20 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "python.testing.unittestArgs": [
+        "-v",
+        "-s",
+        "./src",
+        "-p",
+        "test_*.py"
+    ],
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": [
+        "src/python/tests"
+    ],
+    "python.analysis.extraPaths": [
+        "./src/python",
+    ],
+    "python.defaultInterpreterPath": "D:\\mamba_envs\\home-media-ai\\python.exe"
 }
