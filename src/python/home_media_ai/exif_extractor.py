@@ -134,14 +134,16 @@ class ExifExtractor:
                     except Exception:
                         return metadata
 
+                if exif_data is None:
+                    return metadata
+
                 for tag_id, value in exif_data.items():
                     tag = TAGS.get(tag_id, tag_id)
 
                     # GPS coordinates
                     if tag == 'GPSInfo':
-                        gps = self._parse_gps_info(value)
-                        if gps:
-                            metadata.update(gps)
+                        if gps := self._parse_gps_info(value):
+                            metadata |= gps
 
                     # Camera information
                     elif tag == 'Make':
@@ -282,7 +284,7 @@ class ExifExtractor:
         Returns:
             Dict: Metadata extracted from XMP sidecar, or empty dict if not found.
         """
-        xmp_path = Path(file_path).with_suffix(Path(file_path).suffix + '.xmp')
+        xmp_path = Path(file_path).with_suffix(f'{Path(file_path).suffix}.xmp')
 
         if not xmp_path.exists():
             return {}
@@ -307,8 +309,8 @@ class ExifExtractor:
             # Extract rating - check both element and attribute formats
             # Darktable uses: xmp:Rating="3" (attribute)
             # Lightroom uses: <xmp:Rating>3</xmp:Rating> (element)
-            rating = desc.get('{http://ns.adobe.com/xap/1.0/}Rating')
-            if rating:
+
+            if rating := desc.get('{http://ns.adobe.com/xap/1.0/}Rating'):
                 metadata['rating'] = self._normalize_rating(rating)
             else:
                 rating_elem = root.find('.//xmp:Rating', self.XMP_NAMESPACES)
@@ -316,26 +318,21 @@ class ExifExtractor:
                     metadata['rating'] = self._normalize_rating(rating_elem.text)
 
             # Extract GPS - Darktable stores as attributes
-            gps_lat = desc.get('{http://ns.adobe.com/exif/1.0/}GPSLatitude')
-            if gps_lat:
+            if gps_lat := desc.get('{http://ns.adobe.com/exif/1.0/}GPSLatitude'):
                 metadata['gps_latitude'] = self._parse_xmp_gps_coord(gps_lat)
 
-            gps_lon = desc.get('{http://ns.adobe.com/exif/1.0/}GPSLongitude')
-            if gps_lon:
+            if gps_lon := desc.get('{http://ns.adobe.com/exif/1.0/}GPSLongitude'):
                 metadata['gps_longitude'] = self._parse_xmp_gps_coord(gps_lon)
 
-            gps_alt = desc.get('{http://ns.adobe.com/exif/1.0/}GPSAltitude')
-            if gps_alt:
+            if gps_alt := desc.get('{http://ns.adobe.com/exif/1.0/}GPSAltitude'):
+                metadata['gps_altitude'] = self._parse_xmp_gps_coord(gps_alt)
                 # Format: "2594/10" (fraction)
-                try:
+                with contextlib.suppress(ValueError, ZeroDivisionError):
                     if '/' in gps_alt:
                         num, den = gps_alt.split('/')
                         metadata['gps_altitude'] = float(num) / float(den)
                     else:
                         metadata['gps_altitude'] = float(gps_alt)
-                except (ValueError, ZeroDivisionError):
-                    pass
-
             # Extract camera info - try element format first, then attributes
             make_elem = root.find('.//exif:Make', self.XMP_NAMESPACES)
             if make_elem is not None and make_elem.text:
@@ -352,49 +349,33 @@ class ExifExtractor:
 
             # Extract dimensions from XMP (especially useful for DNG/RAW files)
             # Try tiff:ImageWidth and tiff:ImageLength
-            width_attr = desc.get('{http://ns.adobe.com/tiff/1.0/}ImageWidth')
-            if width_attr:
-                try:
+            if width_attr := desc.get('{http://ns.adobe.com/tiff/1.0/}ImageWidth'):
+                with contextlib.suppress(ValueError):
                     metadata['width'] = int(width_attr)
-                except ValueError:
-                    pass
-
-            height_attr = desc.get('{http://ns.adobe.com/tiff/1.0/}ImageLength')
-            if height_attr:
-                try:
+            if height_attr := desc.get('{http://ns.adobe.com/tiff/1.0/}ImageLength'):
+                with contextlib.suppress(ValueError):
                     metadata['height'] = int(height_attr)
-                except ValueError:
-                    pass
-
             # Also try exif:PixelXDimension and exif:PixelYDimension
             if 'width' not in metadata:
                 width_elem = root.find('.//exif:PixelXDimension', self.XMP_NAMESPACES)
                 if width_elem is not None and width_elem.text:
-                    try:
+                    with contextlib.suppress(ValueError):
                         metadata['width'] = int(width_elem.text)
-                    except ValueError:
-                        pass
-
             if 'height' not in metadata:
                 height_elem = root.find('.//exif:PixelYDimension', self.XMP_NAMESPACES)
                 if height_elem is not None and height_elem.text:
-                    try:
+                    with contextlib.suppress(ValueError):
                         metadata['height'] = int(height_elem.text)
-                    except ValueError:
-                        pass
-
             # Keywords/tags - works for both Lightroom and Darktable
-            keywords = root.findall('.//dc:subject/rdf:Bag/rdf:li', self.XMP_NAMESPACES)
-            if keywords:
+            if keywords := root.findall('.//dc:subject/rdf:Bag/rdf:li', self.XMP_NAMESPACES):
                 metadata['keywords'] = [kw.text.strip() for kw in keywords if kw.text]
 
             # Hierarchical keywords (Lightroom format)
             # Darktable uses lr:hierarchicalSubject with pipe-separated paths
-            hier_keywords = root.findall('.//lr:hierarchicalSubject/rdf:Bag/rdf:li', self.XMP_NAMESPACES)
-            if hier_keywords:
+            if hier_keywords := root.findall('.//lr:hierarchicalSubject/rdf:Bag/rdf:li', self.XMP_NAMESPACES):
                 metadata['hierarchical_keywords'] = [kw.text.strip() for kw in hier_keywords if kw.text]
 
-            logger.info(f"Extracted XMP metadata from {xmp_path}")
+            logger.debug(f"Extracted XMP metadata from {xmp_path}")
 
         except ET.ParseError as e:
             logger.warning(f"Failed to parse XMP file {xmp_path}: {e}")
@@ -437,7 +418,7 @@ class ExifExtractor:
                     altitude = -altitude
                 gps_data['gps_altitude'] = altitude
 
-            return gps_data if gps_data else None
+            return gps_data or None
         except (KeyError, ValueError, TypeError) as e:
             logger.debug(f"Failed to parse GPS info: {e}")
             return None
@@ -459,7 +440,7 @@ class ExifExtractor:
 
             gps_decimal = degrees + minutes / 60.0 + seconds / 3600.0
 
-            if ref and str(ref) in ['S', 'W']:
+            if ref and str(ref) in {'S', 'W'}:
                 gps_decimal = -gps_decimal
 
             return gps_decimal
@@ -511,7 +492,10 @@ class ExifExtractor:
         try:
             if isinstance(value, tuple) and len(value) == 2:
                 return float(value[0]) / float(value[1])
-            return float(value)
+            elif isinstance(value, (int, float, str)):
+                return float(value)
+            else:
+                return None
         except (ValueError, ZeroDivisionError, TypeError):
             return None
 
