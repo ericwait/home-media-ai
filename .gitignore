@@ -36,3 +36,4 @@ MANIFEST
 data/
 analysis_results/
 .ipynb_checkpoints/
+*.pt
