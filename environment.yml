@@ -1,13 +1,15 @@
 name: home-media-ai-stable
 channels:
   - conda-forge
+  - pytorch
+  - nvidia
 dependencies:
   - certifi=2025.8.3
   - exifread=3.5.1
   - jupyterlab=4.4.7
   - mariadb=1.1.12
   - matplotlib=3.10.6
-  - numpy=2.3.3
+  - numpy>=1.24,<2.0
   - opencv=4.12.0
   - pandas=2.3.2
   - pillow=11.3.0
@@ -17,5 +19,10 @@ dependencies:
   - scikit-learn=1.7.2
   - seaborn=0.13.2
   - sqlalchemy=2.0.43
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=12.1
+  - ultralytics
 
 prefix: "D:\\mamba_envs\\home-media-ai-stable"
