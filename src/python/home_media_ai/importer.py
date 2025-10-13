@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import IntegrityError
 
-from .models import Base, Media, MediaType
+from .media import Base, Media, MediaType
 from .scanner import FileInfo
 
 

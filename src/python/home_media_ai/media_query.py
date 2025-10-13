@@ -28,7 +28,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, extract, text
 
-from .models import Media, MediaType
+from .media import Media, MediaType
 from .constants import RAW_EXTENSIONS
 
 

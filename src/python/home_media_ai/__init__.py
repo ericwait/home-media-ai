@@ -1,4 +1,4 @@
-from .models import Media, MediaType, Base
+from .media import Media, MediaType, Base
 from .scanner import MediaScanner, FileInfo
 from .importer import MediaImporter
 from .exif_extractor import ExifExtractor

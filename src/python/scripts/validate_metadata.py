@@ -26,7 +26,7 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from home_media_ai.exif_extractor import ExifExtractor
-from home_media_ai.models import Media
+from home_media_ai.media import Media
 
 # Configure logging
 logging.basicConfig(
