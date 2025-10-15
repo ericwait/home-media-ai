@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: home-media-viewer
+    network_mode: host
+    ports:
+      - "5100:5100"
+    user: "1034:65539"
+    environment:
+      - HOME_MEDIA_AI_URI=mariadb+mariadbconnector://your_user:your_password@your_nas_ip:3306/home_media_ai
+      # /mnt/media is default in app.py
+      - PHOTO_ROOT=/mnt/media
+      - FLASK_ENV=production
+    volumes:
+      # Mount your photo directory (read-only)
+      # IMPORTANT: Change /volume1/photos to YOUR actual photo path
+      - /volume1/photo/RAW:/mnt/media
+    restart: unless-stopped
+    # Removed the custom network - not needed for single service 
