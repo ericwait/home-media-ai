@@ -4,7 +4,11 @@ Home Media AI Web Viewer
 A read-only web interface for exploring your media database.
 """
 import os
+import sys
 from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "python"))
 
 import io
 import rawpy
@@ -31,7 +35,51 @@ engine = create_engine(DATABASE_URI, pool_pre_ping=True)
 Session = sessionmaker(bind=engine)
 
 # Photo root directory (where images are stored)
+# This can be overridden by environment variable or uses default
 PHOTO_ROOT = os.getenv('HOME_MEDIA_AI_PHOTO_ROOT', '/mnt/media')
+
+# Try to load configuration for advanced path mapping
+try:
+    from home_media_ai.config import PathResolver, Config
+
+    # Create config with web service settings
+    config = Config.load()
+    # Override with environment variable if set
+    if PHOTO_ROOT:
+        config.web.media_root = PHOTO_ROOT
+
+    path_resolver = PathResolver(config)
+    USE_PATH_RESOLVER = True
+    logger.info(f"Path resolver loaded with mappings: {config.storage_roots}")
+except ImportError:
+    USE_PATH_RESOLVER = False
+    path_resolver = None
+    logger.warning("Path resolver not available, using simple path construction")
+
+
+def resolve_media_path(storage_root, directory, filename):
+    """Resolve media path components to local filesystem path.
+
+    Args:
+        storage_root: Database storage root
+        directory: Directory within storage root
+        filename: Filename
+
+    Returns:
+        str: Resolved local path
+    """
+    if USE_PATH_RESOLVER:
+        # Use configuration-based path resolution
+        try:
+            return str(path_resolver.resolve_path(storage_root, directory, filename))
+        except Exception as e:
+            logger.warning(f"Path resolver failed: {e}, falling back to simple construction")
+
+    # Fallback: simple path construction using PHOTO_ROOT
+    if directory:
+        return str(Path(PHOTO_ROOT) / directory / filename)
+    else:
+        return str(Path(PHOTO_ROOT) / filename)
 
 
 @app.route('/')
@@ -361,16 +409,13 @@ def get_thumbnail(image_id):
 
         storage_root, directory, filename = row
 
-        # Build the full path using components (preferred method)
-        if filename:
-            # Use new component-based path
-            relative_path = f"{directory}/{filename}" if directory else filename
-            # PHOTO_ROOT is set via environment variable (e.g., /mnt/media)
-            mounted_path = str(Path(PHOTO_ROOT) / relative_path)
+        if not filename:
+            logger.warning(f"No filename for image {image_id}")
+            return "No filename", 404
 
-            logger.debug(f"Component path: {PHOTO_ROOT}/{relative_path}")
-        else:
-            logger.debug(f"No filename for image {image_id}")
+        # Resolve path using path resolver (with mappings) or fallback to simple construction
+        mounted_path = resolve_media_path(storage_root, directory, filename)
+        logger.debug(f"Resolved path for image {image_id}: {mounted_path}")
 
         # Generate thumbnail
         try:

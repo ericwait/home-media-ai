@@ -31,7 +31,10 @@ class Media(Base):
 
     Attributes:
         id: Unique identifier for the media.
-        file_path: Path to the media file.
+        storage_root: Mount point where file was found (e.g., /volume1/photos).
+        directory: Path from storage_root to file (e.g., 2024/January).
+        filename: Just the filename portion (e.g., IMG_001.CR2).
+        file_path: DEPRECATED - Legacy column, will be removed after migration.
         file_hash: SHA-256 hash of the file.
         file_size: Size of the file in bytes.
         file_ext: File extension.
@@ -55,7 +58,12 @@ class Media(Base):
     __tablename__ = 'media'
 
     id            = Column(Integer, primary_key=True)
-    file_path     = Column(String(500), nullable=False, unique=True)
+    # New path component columns
+    storage_root  = Column(String(500), nullable=True)
+    directory     = Column(String(500), nullable=True)
+    filename      = Column(String(255), nullable=False)
+    # Deprecated column - will be removed after migration
+    file_path     = Column(String(500), nullable=True)
     file_hash     = Column(String(64), nullable=False, unique=True)
     file_size     = Column(BigInteger, nullable=False)
     file_ext      = Column(String(10), nullable=False)
@@ -78,3 +86,35 @@ class Media(Base):
 
     media_type  = relationship("MediaType", back_populates="media")
     derivatives = relationship("Media", backref="original", remote_side=[id])
+
+    def get_full_path(self, use_local_mapping: bool = True):
+        """Construct full file path from components.
+
+        Args:
+            use_local_mapping: If True, uses configuration to map storage_root to local paths.
+                              If False, uses database paths directly.
+
+        Returns:
+            str: Full path to the file, resolved to local filesystem if mapping exists.
+        """
+        if use_local_mapping:
+            # Use path resolver for cross-platform compatibility
+            try:
+                from .config import get_path_resolver
+                resolver = get_path_resolver()
+                path = resolver.resolve_path(self.storage_root, self.directory, self.filename)
+                return str(path)
+            except ImportError:
+                # Config module not available, fall back to simple path construction
+                pass
+
+        # Fallback: construct path from database values directly
+        from pathlib import Path
+        if self.storage_root and self.directory:
+            return str(Path(self.storage_root) / self.directory / self.filename)
+        elif self.storage_root:
+            return str(Path(self.storage_root) / self.filename)
+        elif self.directory:
+            return str(Path(self.directory) / self.filename)
+        else:
+            return self.filename

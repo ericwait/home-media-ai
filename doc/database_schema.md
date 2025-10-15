@@ -64,23 +64,37 @@ Core table for tracking all media files on the NAS. Files should not move once e
 
 | Column         | Type          | Notes |
 |----------------|---------------|-------|
-| `id`           | BIGINT PK     | Auto‑increment |
-| `base_path`    | VARCHAR(500)  | Directory path (filesystem agnostic) |
-| `filename`     | VARCHAR(255)  | Just the filename portion |
-| `file_path`    | TEXT          | Virtual computed column: `CONCAT(base_path, '/', filename)` |
+| `id`           | INT PK        | Auto‑increment |
+| `storage_root` | VARCHAR(500)  | Mount point where file was found (e.g., `/volume1/photos`) |
+| `directory`    | VARCHAR(500)  | Path from storage_root to file (e.g., `2024/January`) |
+| `filename`     | VARCHAR(255)  | Just the filename portion (e.g., `IMG_001.CR2`) |
+| `file_path`    | TEXT          | **DEPRECATED** - Legacy column, will be removed after migration |
 | `file_hash`    | CHAR(64)      | SHA‑256 hash, unique |
 | `file_size`    | BIGINT        | Size in bytes |
+| `file_ext`     | VARCHAR(10)   | File extension |
 | `media_type_id`| INT FK        | References `media_types.id` |
-| `format_id`    | INT FK        | References `file_formats.id` |
 | `created`      | DATETIME      | Filesystem creation timestamp |
-| `ingested_at`  | TIMESTAMP     | When first discovered by system |
-| `updated_at`   | TIMESTAMP     | Last metadata update |
-| `deleted_at`   | TIMESTAMP     | Soft delete timestamp (NULL = active) |
-| `origin_id`    | BIGINT FK     | References `media.id` if derivative; NULL if original |
-| `is_original`  | BOOLEAN       | Computed: `(origin_id IS NULL)` STORED |
-| `has_errors`   | BOOLEAN       | True if processing encountered errors |
-| `error_details`| JSON          | Structured error information |
+| `is_original`  | BOOLEAN       | True if original file, false if derivative |
+| `origin_id`    | INT FK        | References `media.id` if derivative; NULL if original |
 | `metadata`     | JSON          | File‑specific data (EXIF, dimensions, codec, etc.) |
+| `created_at`   | DATETIME      | When record was created in database |
+| `updated_at`   | DATETIME      | Last metadata update |
+
+**Path Reconstruction**: Full path = `storage_root/directory/filename`
+Example: `/volume1/photos/2024/January/IMG_001.CR2`
+
+**EXIF Metadata Columns** (extracted from `metadata` JSON for query performance):
+| Column         | Type          | Notes |
+|----------------|---------------|-------|
+| `gps_latitude` | NUMERIC(10,8) | GPS latitude in decimal degrees |
+| `gps_longitude`| NUMERIC(11,8) | GPS longitude in decimal degrees |
+| `gps_altitude` | NUMERIC(8,2)  | GPS altitude in meters |
+| `camera_make`  | VARCHAR(100)  | Camera manufacturer |
+| `camera_model` | VARCHAR(100)  | Camera model |
+| `lens_model`   | VARCHAR(100)  | Lens model if available |
+| `width`        | INT           | Image width in pixels |
+| `height`       | INT           | Image height in pixels |
+| `rating`       | INT           | Quality rating 0-5 stars |
 
 ---
 

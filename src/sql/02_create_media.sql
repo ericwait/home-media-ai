@@ -29,7 +29,12 @@ INSERT IGNORE INTO media_types (name, description, mime_group) VALUES
 -- Core media table with provenance tracking
 CREATE TABLE IF NOT EXISTS media (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    file_path TEXT NOT NULL,
+    -- File path components (new schema)
+    storage_root VARCHAR(500),
+    directory VARCHAR(500),
+    filename VARCHAR(255) NOT NULL,
+    -- Deprecated: file_path will be removed after migration
+    file_path TEXT,
     file_hash CHAR(64) NOT NULL UNIQUE,
     file_size BIGINT NOT NULL,
     file_ext VARCHAR(10),
@@ -46,5 +51,7 @@ CREATE TABLE IF NOT EXISTS media (
     INDEX idx_created (created),
     INDEX idx_media_type (media_type_id),
     INDEX idx_original (is_original),
-    INDEX idx_origin (origin_id)
+    INDEX idx_origin (origin_id),
+    INDEX idx_storage_root (storage_root),
+    INDEX idx_filename (filename)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;

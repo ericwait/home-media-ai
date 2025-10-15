@@ -66,21 +66,21 @@ ORDER BY tn.name;
 -- ==================
 
 -- Find all RAW files with their derivatives
-SELECT 
-    original.file_path AS raw_file,
+SELECT
+    CONCAT(original.storage_root, '/', original.directory, '/', original.filename) AS raw_file,
     original.file_hash AS raw_hash,
     COUNT(derivative.id) AS derivative_count,
     GROUP_CONCAT(derivative.file_ext) AS derivative_formats
 FROM media original
 LEFT JOIN media derivative ON derivative.origin_id = original.id
 WHERE original.is_original = TRUE
-GROUP BY original.id, original.file_path, original.file_hash
+GROUP BY original.id, original.storage_root, original.directory, original.filename, original.file_hash
 ORDER BY derivative_count DESC;
 
 -- Find orphaned derivatives (derivatives without originals)
-SELECT 
+SELECT
     m.id,
-    m.file_path,
+    CONCAT(m.storage_root, '/', m.directory, '/', m.filename) AS file_path,
     m.file_ext,
     m.origin_id
 FROM media m
@@ -109,8 +109,8 @@ WITH RECURSIVE taxon_tree AS (
     SELECT tn.id FROM taxonomy_nodes tn
     JOIN taxon_tree tt ON tn.parent_id = tt.id
 )
-SELECT 
-    m.file_path,
+SELECT
+    CONCAT(m.storage_root, '/', m.directory, '/', m.filename) AS file_path,
     tn.name AS taxon_name,
     tn.rank,
     mtl.confidence,
@@ -122,9 +122,9 @@ WHERE tn.id IN (SELECT id FROM taxon_tree)
 ORDER BY mtl.confidence DESC;
 
 -- Find unlinked media files
-SELECT 
+SELECT
     m.id,
-    m.file_path,
+    CONCAT(m.storage_root, '/', m.directory, '/', m.filename) AS file_path,
     m.file_ext,
     m.created
 FROM media m

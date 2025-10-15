@@ -13,10 +13,35 @@ from .scanner import FileInfo
 
 
 class MediaImporter:
-    def __init__(self, database_uri: str):
+    def __init__(self, database_uri: str, storage_root: Optional[str] = None, use_config: bool = True):
+        """Initialize MediaImporter.
+
+        Args:
+            database_uri: Database connection string
+            storage_root: The root path where media is stored (e.g., '/volume1/photos').
+                         If provided, file paths will be split into storage_root/directory/filename.
+                         If None, will try to load from config.
+            use_config: Whether to load configuration from config.yaml for storage_root.
+                       If True and storage_root is None, will use config.scanning.storage_root.
+        """
         self.engine = create_engine(database_uri)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
+
+        # Determine storage root
+        if storage_root:
+            self.storage_root = storage_root
+        elif use_config:
+            try:
+                from .config import get_path_resolver
+                resolver = get_path_resolver()
+                self.storage_root = resolver.get_storage_root_for_import()
+            except (ImportError, ValueError):
+                # Config not available or not configured
+                self.storage_root = None
+        else:
+            self.storage_root = None
+
         self._media_types_cache = {}
         self._load_media_types()
 
@@ -32,6 +57,32 @@ class MediaImporter:
             self._media_types_cache[media_type_name] = media_type.id
         return self._media_types_cache[media_type_name]
 
+    def _split_file_path(self, full_path: str) -> Tuple[Optional[str], Optional[str], str]:
+        """Split a file path into storage_root, directory, and filename components.
+
+        Args:
+            full_path: The full absolute path to the file
+
+        Returns:
+            Tuple of (storage_root, directory, filename)
+        """
+        path_obj = Path(full_path)
+        filename = path_obj.name
+
+        if not self.storage_root:
+            # No storage_root provided, use parent directory as storage_root
+            return str(path_obj.parent), None, filename
+
+        # If storage_root is provided, calculate relative path
+        storage_root_path = Path(self.storage_root)
+        try:
+            relative_path = path_obj.parent.relative_to(storage_root_path)
+            directory = str(relative_path) if str(relative_path) != '.' else None
+            return self.storage_root, directory, filename
+        except ValueError:
+            # Path is not relative to storage_root, use the parent as storage_root
+            return str(path_obj.parent), None, filename
+
     def _calculate_file_hash(self, file_path: str, chunk_size: int = 8192) -> str:
         sha256_hash = hashlib.sha256()
         try:
@@ -42,9 +93,18 @@ class MediaImporter:
         except OSError:
             raise
 
-    def _file_exists_in_db(self, file_path: str, file_hash: str) -> Optional[Media]:
+    def _file_exists_in_db(self, file_hash: str, filename: str) -> Optional[Media]:
+        """Check if file exists by hash or filename.
+
+        Args:
+            file_hash: SHA-256 hash of the file
+            filename: Name of the file
+
+        Returns:
+            Media object if found, None otherwise
+        """
         return self.session.query(Media).filter(
-            (Media.file_path == file_path) | (Media.file_hash == file_hash)
+            (Media.file_hash == file_hash) | (Media.filename == filename)
         ).first()
 
     def import_file(self, file_info: FileInfo, origin_id: Optional[int] = None) -> Tuple[Optional[Media], bool]:
@@ -63,8 +123,10 @@ class MediaImporter:
         except OSError:
             return None, False
 
-        existing_media = self._file_exists_in_db(file_info.path, file_hash)
-        if existing_media:
+        # Split the file path into components
+        storage_root, directory, filename = self._split_file_path(file_info.path)
+
+        if existing_media := self._file_exists_in_db(file_hash, filename):
             return existing_media, False  # Already exists
 
         media_type_id = self._get_media_type_id(file_info.media_type)
@@ -73,7 +135,10 @@ class MediaImporter:
         exif_data = file_info.exif_data or {}
 
         media = Media(
-            file_path=file_info.path,
+            storage_root=storage_root,
+            directory=directory,
+            filename=filename,
+            file_path=file_info.path,  # Keep for backwards compatibility during migration
             file_hash=file_hash,
             file_size=file_info.size,
             file_ext=file_info.extension,
@@ -100,10 +165,10 @@ class MediaImporter:
             return media, True  # Newly created
         except IntegrityError:
             self.session.rollback()
-            return self._file_exists_in_db(file_info.path, file_hash), False
+            return self._file_exists_in_db(file_hash, filename), False
 
     def import_file_pairs(self, file_pairs: Iterator[Tuple[FileInfo, Optional[FileInfo]]],
-                         progress_callback=None) -> Dict[str, int]:
+                    progress_callback=None) -> Dict[str, int]:
         stats = {'imported': 0, 'skipped': 0, 'errors': 0}
         batch_size = 100
         processed = 0
@@ -162,11 +227,14 @@ class MediaImporter:
         batch_size = 100
 
         media_objects = []
-        for i, file_info in enumerate(files):
+        for file_info in files:
             try:
                 file_hash = self._calculate_file_hash(file_info.path)
 
-                if self._file_exists_in_db(file_info.path, file_hash):
+                # Split the file path into components
+                storage_root, directory, filename = self._split_file_path(file_info.path)
+
+                if self._file_exists_in_db(file_hash, filename):
                     stats['skipped'] += 1
                     continue
 
@@ -176,7 +244,10 @@ class MediaImporter:
                 exif_data = file_info.exif_data or {}
 
                 media = Media(
-                    file_path=file_info.path,
+                    storage_root=storage_root,
+                    directory=directory,
+                    filename=filename,
+                    file_path=file_info.path,  # Keep for backwards compatibility during migration
                     file_hash=file_hash,
                     file_size=file_info.size,
                     file_ext=file_info.extension,
@@ -200,9 +271,7 @@ class MediaImporter:
 
                 if len(media_objects) >= batch_size:
                     try:
-                        self.session.bulk_save_objects(media_objects)
-                        self.session.commit()
-                        stats['imported'] += len(media_objects)
+                        self._bulk_save_objects(media_objects, stats)
                         media_objects = []
 
                         if progress_callback:
@@ -218,14 +287,18 @@ class MediaImporter:
         # Process remaining objects
         if media_objects:
             try:
-                self.session.bulk_save_objects(media_objects)
-                self.session.commit()
-                stats['imported'] += len(media_objects)
+                self._bulk_save_objects(media_objects, stats)
             except Exception:
                 self.session.rollback()
                 stats['errors'] += len(media_objects)
 
         return stats
+
+    # TODO Rename this here and in `bulk_import_files`
+    def _bulk_save_objects(self, media_objects, stats):
+        self.session.bulk_save_objects(media_objects)
+        self.session.commit()
+        stats['imported'] += len(media_objects)
 
     def close(self):
         self.session.close()

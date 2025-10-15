@@ -78,7 +78,7 @@ def create_image_gallery_html(image_paths_df):
     """Create HTML for image gallery with thumbnails.
 
     Args:
-        image_paths_df: DataFrame with file_path, camera_make, camera_model, created columns
+        image_paths_df: DataFrame with storage_root, directory, filename, camera_make, camera_model, created columns
 
     Returns:
         HTML string for the gallery
@@ -93,7 +93,9 @@ def create_image_gallery_html(image_paths_df):
     """
 
     for idx, row in image_paths_df.iterrows():
-        thumbnail = create_thumbnail(row['file_path'])
+        # Construct file path from components
+        file_path = Path(row['storage_root']) / row['directory'] / row['filename'] if pd.notna(row['directory']) else Path(row['storage_root']) / row['filename']
+        thumbnail = create_thumbnail(str(file_path))
 
         if thumbnail:
             camera_info = f"{row['camera_make']} {row['camera_model']}" if pd.notna(row['camera_make']) else "Unknown"
@@ -191,7 +193,9 @@ def fetch_media_stats(engine):
             SELECT
                 gps_latitude,
                 gps_longitude,
-                file_path,
+                storage_root,
+                directory,
+                filename,
                 camera_make,
                 camera_model,
                 rating,
@@ -225,7 +229,9 @@ def fetch_media_stats(engine):
 
         'top_rated_images': """
             SELECT
-                file_path,
+                storage_root,
+                directory,
+                filename,
                 camera_make,
                 camera_model,
                 created,

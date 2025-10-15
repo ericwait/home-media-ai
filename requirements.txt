@@ -1,0 +1,18 @@
+# Home Media AI Python Dependencies
+
+# Database
+SQLAlchemy>=2.0.0
+mariadb>=1.1.0
+
+# Image processing
+Pillow>=10.0.0
+rawpy>=0.18.0
+
+# Data analysis
+pandas>=2.0.0
+
+# Configuration
+PyYAML>=6.0.0
+
+# EXIF metadata extraction
+piexif>=1.1.3

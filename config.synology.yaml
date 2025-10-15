@@ -1,0 +1,33 @@
+# Example configuration for Synology NAS
+# Copy to config.yaml and customize for your Synology NAS
+
+storage_roots:
+  # For Synology NAS, paths are typically /volume1/...
+  "/volume1/photos": "/volume1/photos"
+  "/volume1/photo/RAW": "/volume1/photo/RAW"
+
+default_storage_root: "/volume1/photo/RAW"
+
+path_resolution:
+  strategy: "database"  # On NAS, use database paths directly
+  validate_exists: false
+  normalize_separators: true
+
+database:
+  # Database connection - use localhost since MariaDB is on the same NAS
+  uri: "mariadb+mariadbconnector://media_user:your_password@localhost:3306/home_media_ai"
+
+scanning:
+  # Where new files are scanned from
+  storage_root: "/volume1/photos"
+  batch_size: 100
+
+web:
+  port: 5100
+  host: "0.0.0.0"
+  # On NAS, web service accesses files directly
+  media_root: "/volume1/photos"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(levelname)s - %(message)s"

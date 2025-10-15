@@ -1,0 +1,60 @@
+# Home Media AI Configuration
+# Copy this file to config.yaml and customize for your environment
+
+# Storage root mappings
+# Maps database storage_root values to local mount points
+# This allows the same database to work across different machines/environments
+storage_roots:
+  # Database value -> Local mount point
+  "/volume1/photos": "/mnt/media"           # Example: Synology NAS volume mapped to Linux mount
+  "/volume1/photo/RAW": "/Volumes/Photos"   # Example: NAS mapped to macOS
+  # Add more mappings as needed
+
+# Default storage root (used if no mapping matches)
+# This is where files will be looked for if no specific mapping is found
+default_storage_root: null
+
+# Path resolution strategy
+path_resolution:
+  # Strategy for resolving paths:
+  #   - "mapped": Try mapped path first, then fall back to database path
+  #   - "database": Always use database path as-is
+  #   - "local_only": Only use mapped paths, fail if no mapping exists
+  strategy: "mapped"
+
+  # Whether to validate that resolved paths exist
+  validate_exists: false
+
+  # Whether to normalize path separators (/ vs \) for current OS
+  normalize_separators: true
+
+# Database connection
+database:
+  uri: "mariadb+mariadbconnector://user:password@localhost:3306/home_media_ai"
+  # Or use environment variable: ${HOME_MEDIA_AI_URI}
+
+# Scanning settings (used by scanner/importer)
+scanning:
+  # Storage root to use when importing new files
+  # This value will be stored in the database
+  storage_root: "/volume1/photos"
+
+  # Batch size for bulk operations
+  batch_size: 100
+
+# Web service settings
+web:
+  # Port for web service
+  port: 5100
+
+  # Host to bind to
+  host: "0.0.0.0"
+
+  # Media root for serving files (overrides storage_root mappings for web service)
+  # This is the local path where the web service can access media files
+  media_root: "/mnt/media"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

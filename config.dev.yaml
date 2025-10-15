@@ -1,0 +1,38 @@
+# Example configuration for development machine
+# Copy to config.yaml and customize for your local development environment
+
+storage_roots:
+  # Map Synology NAS paths to local mount points
+  # Example: Synology volume mounted via SMB/NFS
+  "/volume1/photos": "/Users/yourname/mnt/nas-photos"  # macOS
+  # "/volume1/photos": "/mnt/nas/photos"                # Linux
+  # "/volume1/photos": "Z:\\photos"                     # Windows
+
+  "/volume1/photo/RAW": "/Users/yourname/mnt/nas-raw"
+
+default_storage_root: "/Users/yourname/mnt/nas-photos"
+
+path_resolution:
+  strategy: "mapped"  # Try mapped paths first, fall back to database paths
+  validate_exists: false
+  normalize_separators: true
+
+database:
+  # Connect to remote database on NAS
+  uri: "mariadb+mariadbconnector://media_user:your_password@192.168.1.100:3306/home_media_ai"
+  # Or use SSH tunnel: ssh -L 3306:localhost:3306 nas.local
+  # uri: "mariadb+mariadbconnector://media_user:your_password@localhost:3306/home_media_ai"
+
+scanning:
+  # When importing from dev machine, use local path
+  storage_root: "/Users/yourname/Photos"
+  batch_size: 100
+
+web:
+  port: 5100
+  host: "127.0.0.1"  # Only accessible locally
+  media_root: "/Users/yourname/mnt/nas-photos"
+
+logging:
+  level: "DEBUG"  # More verbose for development
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

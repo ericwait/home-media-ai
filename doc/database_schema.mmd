@@ -21,23 +21,30 @@ erDiagram
     }
 
     MEDIA {
-        BIGINT id PK
-        VARCHAR base_path "filesystem agnostic directory"
-        VARCHAR filename "just filename portion"
-        TEXT file_path "computed: base_path + filename"
+        INT id PK
+        VARCHAR storage_root "mount point e.g. /volume1/photos"
+        VARCHAR directory "path from root e.g. 2024/January"
+        VARCHAR filename "filename e.g. IMG_001.CR2"
+        TEXT file_path "DEPRECATED - legacy column"
         CHAR file_hash "SHA-256, unique"
         BIGINT file_size
+        VARCHAR file_ext "file extension"
         INT media_type_id FK
-        INT format_id FK
         DATETIME created "filesystem timestamp"
-        TIMESTAMP ingested_at "when discovered"
-        TIMESTAMP updated_at "last metadata update"
-        TIMESTAMP deleted_at "soft delete"
-        BIGINT origin_id FK "provenance chain"
-        BOOLEAN is_original "computed from origin_id"
-        BOOLEAN has_errors
-        JSON error_details
+        BOOLEAN is_original "true if original"
+        INT origin_id FK "provenance chain"
         JSON metadata "EXIF, dimensions, codec, etc"
+        DATETIME created_at "when discovered"
+        DATETIME updated_at "last metadata update"
+        NUMERIC gps_latitude "GPS coordinates"
+        NUMERIC gps_longitude "GPS coordinates"
+        NUMERIC gps_altitude "altitude in meters"
+        VARCHAR camera_make "camera manufacturer"
+        VARCHAR camera_model "camera model"
+        VARCHAR lens_model "lens model"
+        INT width "image width pixels"
+        INT height "image height pixels"
+        INT rating "0-5 stars"
     }
 
     %% Classification System Tables

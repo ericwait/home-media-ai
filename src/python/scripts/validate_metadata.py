@@ -99,7 +99,8 @@ class MetadataValidator:
         Returns:
             Tuple of (all_valid, differences_dict)
         """
-        file_path = media.file_path
+        # Get file path from components
+        file_path = media.get_full_path()
 
         # Check if file exists
         if not Path(file_path).exists():
@@ -187,7 +188,7 @@ class MetadataValidator:
         print()
 
         for i, media in enumerate(samples, 1):
-            print(f"[{i}/{len(samples)}] {Path(media.file_path).name}")
+            print(f"[{i}/{len(samples)}] {media.filename}")
 
             is_valid, differences = self.validate_file(media)
 
@@ -195,7 +196,7 @@ class MetadataValidator:
                 stats['errors'] += 1
                 print(f"  ✗ ERROR: {differences['error']}")
                 if verbose:
-                    print(f"  Path: {media.file_path}")
+                    print(f"  Path: {media.get_full_path()}")
             elif is_valid:
                 stats['valid'] += 1
                 print(f"  ✓ Valid - all metadata matches")
@@ -215,7 +216,7 @@ class MetadataValidator:
                     print(f"      File:     {diff['file']}")
 
                 if verbose:
-                    print(f"  Path: {media.file_path}")
+                    print(f"  Path: {media.get_full_path()}")
 
             print()
 

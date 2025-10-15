@@ -562,7 +562,7 @@ class MediaQuery:
         if columns is None:
             # Default columns for DataFrame
             columns = [
-                'id', 'file_path', 'file_ext', 'file_size',
+                'id', 'storage_root', 'directory', 'filename', 'file_ext', 'file_size',
                 'rating', 'camera_make', 'camera_model',
                 'gps_latitude', 'gps_longitude', 'gps_altitude',
                 'width', 'height', 'created', 'is_original'
@@ -570,7 +570,14 @@ class MediaQuery:
 
         data = []
         for media in results:
-            row = {col: getattr(media, col, None) for col in columns}
+            row = {
+                col: (
+                    media.get_full_path()
+                    if col == 'file_path'
+                    else getattr(media, col, None)
+                )
+                for col in columns
+            }
             data.append(row)
 
         return pd.DataFrame(data)
@@ -582,7 +589,7 @@ class MediaQuery:
             List of file paths as strings
         """
         results = self.all()
-        return [str(media.file_path) for media in results]
+        return [media.get_full_path() for media in results]
 
     # ==========================================
     # Statistics / Aggregation

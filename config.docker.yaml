@@ -1,0 +1,33 @@
+# Example configuration for Docker container
+# This is for the web service running in a Docker container
+
+storage_roots:
+  # Map NAS paths to container mount points
+  "/volume1/photos": "/mnt/media"
+  "/volume1/photo/RAW": "/mnt/media"
+
+default_storage_root: "/mnt/media"
+
+path_resolution:
+  strategy: "mapped"  # Map database paths to container paths
+  validate_exists: false
+  normalize_separators: true
+
+database:
+  # Use environment variable for connection
+  # Set HOME_MEDIA_AI_URI in docker-compose.yml or Dockerfile
+  uri: "${HOME_MEDIA_AI_URI}"
+
+scanning:
+  # Not typically used in web container
+  storage_root: "/mnt/media"
+  batch_size: 100
+
+web:
+  port: 5100  # Internal container port
+  host: "0.0.0.0"
+  media_root: "/mnt/media"  # Where files are mounted in container
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(levelname)s - %(message)s"
