@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, Iterator, Optional, Set, Tuple
 from dataclasses import dataclass, field
 
-from .constants import MEDIA_TYPE_EXTENSIONS
+from .utils import infer_media_type_from_extension
 
 try:
     from PIL import Image
@@ -34,15 +34,6 @@ class MediaScanner:
     def __init__(self, root_path: str, exif_extractor=None):
         self.root_path = Path(root_path)
         self.exif_extractor = exif_extractor
-        # Use shared extension definitions
-        self.media_type_extensions = MEDIA_TYPE_EXTENSIONS
-
-    def _get_media_type(self, extension: str) -> Optional[str]:
-        ext_lower = extension.lower()
-        for media_type, extensions in self.media_type_extensions.items():
-            if ext_lower in extensions:
-                return media_type
-        return None
 
     def _get_exif_timestamp_pil(self, file_path: Path) -> Optional[datetime]:
         if not HAS_PIL:
@@ -104,7 +95,7 @@ class MediaScanner:
                     continue
 
                 extension = file_path.suffix
-                media_type = self._get_media_type(extension)
+                media_type = infer_media_type_from_extension(extension)
 
                 if not media_type:
                     continue

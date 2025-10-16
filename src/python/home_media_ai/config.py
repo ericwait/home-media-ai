@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 @dataclass
 class PathResolutionConfig:
     """Configuration for path resolution strategy."""
-    strategy: str = "mapped"  # mapped, database, local_only
+    strategy: str = "config_only"  # config_only, mapped, database
     validate_exists: bool = False
     normalize_separators: bool = True
 
@@ -92,11 +92,7 @@ class Config:
                 Path(__file__).parent.parent.parent.parent / "config.yaml",
                 Path.home() / ".config" / "home-media-ai" / "config.yaml",
             ]
-            config_file = None
-            for path in search_paths:
-                if path.exists():
-                    config_file = path
-                    break
+            config_file = next((path for path in search_paths if path.exists()), None)
 
         if config_file and config_file.exists():
             with open(config_file, 'r') as f:
@@ -140,12 +136,12 @@ class PathResolver:
         """
         self.config = config or Config.load()
 
-    def resolve_path(self, storage_root: Optional[str], directory: Optional[str],
-                     filename: str) -> Path:
+    def resolve_path(self, storage_root: Optional[str], directory: Optional[str], filename: str) -> Path:
         """Resolve a path from database components to local filesystem path.
 
         Args:
-            storage_root: Database storage root (e.g., /volume1/photos)
+            storage_root: Database storage root (e.g., tiger/photo/RAW or /volume1/photos)
+                         Ignored when strategy is 'config_only'
             directory: Relative directory from storage root (e.g., 2024/January)
             filename: Filename (e.g., IMG_001.CR2)
 
@@ -153,49 +149,45 @@ class PathResolver:
             Resolved Path object
 
         Raises:
-            FileNotFoundError: If path resolution strategy is 'local_only' and no mapping exists
+            ValueError: If strategy requires config but no default_storage_root is set
         """
         strategy = self.config.path_resolution.strategy
 
-        # Build path using mapped storage root
-        local_root = self._get_local_storage_root(storage_root)
+        if strategy == "config_only":
+            # Ignore database storage_root entirely, use config default_storage_root
+            if not self.config.default_storage_root:
+                raise ValueError(
+                    "strategy='config_only' requires default_storage_root to be set in config"
+                )
+            local_root = self.config.default_storage_root
 
-        if local_root:
-            # Use mapped root
-            if directory:
-                local_path = Path(local_root) / directory / filename
-            else:
-                local_path = Path(local_root) / filename
-        elif strategy == "local_only":
-            raise FileNotFoundError(
-                f"No local mapping found for storage_root: {storage_root} "
-                f"and strategy is 'local_only'"
-            )
+        elif strategy == "mapped":
+            # Try to map database storage_root using config, fall back to default
+            local_root = self._get_local_storage_root(storage_root)
+            if not local_root:
+                raise FileNotFoundError(
+                    f"No mapping found for storage_root: {storage_root}. "
+                    f"Add mapping to config or use strategy='config_only'"
+                )
+
+        elif strategy == "database":
+            # Use database storage_root directly (no config mapping)
+            local_root = storage_root
+            if not local_root:
+                raise ValueError("Database storage_root is None and strategy='database'")
+
         else:
-            # Fall back to database path
-            if storage_root:
-                if directory:
-                    local_path = Path(storage_root) / directory / filename
-                else:
-                    local_path = Path(storage_root) / filename
-            else:
-                # No storage root at all, just use directory/filename
-                if directory:
-                    local_path = Path(directory) / filename
-                else:
-                    local_path = Path(filename)
+            raise ValueError(f"Unknown path resolution strategy: {strategy}")
+
+        # Build the full path
+        if directory:
+            local_path = Path(local_root) / directory / filename
+        else:
+            local_path = Path(local_root) / filename
 
         # Normalize path separators if configured
         if self.config.path_resolution.normalize_separators:
             local_path = Path(str(local_path).replace('\\', os.sep).replace('/', os.sep))
-
-        # Validate existence if configured
-        if self.config.path_resolution.validate_exists and not local_path.exists():
-            # Try falling back to database path if we haven't already
-            if local_root and strategy == "mapped":
-                fallback_path = self._try_database_path(storage_root, directory, filename)
-                if fallback_path and fallback_path.exists():
-                    return fallback_path
 
         return local_path
 
@@ -218,25 +210,22 @@ class PathResolver:
         # Check for partial matches (longest match wins)
         # This handles cases like /volume1/photos/raw -> /mnt/media
         matches = []
-        for db_root, local_root in self.config.storage_roots.items():
-            if db_storage_root.startswith(db_root):
-                matches.append((len(db_root), db_root, local_root))
-
+        matches.extend(
+            (len(db_root), db_root, local_root)
+            for db_root, local_root in self.config.storage_roots.items()
+            if db_storage_root.startswith(db_root)
+        )
         if matches:
             # Return longest matching prefix
             matches.sort(reverse=True)
             _, db_root, local_root = matches[0]
             # Append the remaining path
             remainder = db_storage_root[len(db_root):].lstrip('/')
-            if remainder:
-                return str(Path(local_root) / remainder)
-            return local_root
-
+            return str(Path(local_root) / remainder) if remainder else local_root
         # No mapping found
         return self.config.default_storage_root
 
-    def _try_database_path(self, storage_root: Optional[str], directory: Optional[str],
-                          filename: str) -> Optional[Path]:
+    def _try_database_path(self, storage_root: Optional[str], directory: Optional[str], filename: str) -> Optional[Path]:
         """Try to build path using database values directly.
 
         Args:

@@ -1,15 +1,13 @@
-import hashlib
-import os
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Iterator, Tuple
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
-from .media import Base, Media, MediaType
+from .media import Media, MediaType
 from .scanner import FileInfo
+from .utils import calculate_file_hash, split_file_path
 
 
 class MediaImporter:
@@ -57,41 +55,6 @@ class MediaImporter:
             self._media_types_cache[media_type_name] = media_type.id
         return self._media_types_cache[media_type_name]
 
-    def _split_file_path(self, full_path: str) -> Tuple[Optional[str], Optional[str], str]:
-        """Split a file path into storage_root, directory, and filename components.
-
-        Args:
-            full_path: The full absolute path to the file
-
-        Returns:
-            Tuple of (storage_root, directory, filename)
-        """
-        path_obj = Path(full_path)
-        filename = path_obj.name
-
-        if not self.storage_root:
-            # No storage_root provided, use parent directory as storage_root
-            return str(path_obj.parent), None, filename
-
-        # If storage_root is provided, calculate relative path
-        storage_root_path = Path(self.storage_root)
-        try:
-            relative_path = path_obj.parent.relative_to(storage_root_path)
-            directory = str(relative_path) if str(relative_path) != '.' else None
-            return self.storage_root, directory, filename
-        except ValueError:
-            # Path is not relative to storage_root, use the parent as storage_root
-            return str(path_obj.parent), None, filename
-
-    def _calculate_file_hash(self, file_path: str, chunk_size: int = 8192) -> str:
-        sha256_hash = hashlib.sha256()
-        try:
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(chunk_size), b""):
-                    sha256_hash.update(chunk)
-            return sha256_hash.hexdigest()
-        except OSError:
-            raise
 
     def _file_exists_in_db(self, file_hash: str, filename: str) -> Optional[Media]:
         """Check if file exists by hash or filename.
@@ -119,12 +82,12 @@ class MediaImporter:
             was_created is True if the file was newly imported, False if it already existed
         """
         try:
-            file_hash = self._calculate_file_hash(file_info.path)
+            file_hash = calculate_file_hash(file_info.path)
         except OSError:
             return None, False
 
         # Split the file path into components
-        storage_root, directory, filename = self._split_file_path(file_info.path)
+        storage_root, directory, filename = split_file_path(file_info.path, self.storage_root)
 
         if existing_media := self._file_exists_in_db(file_hash, filename):
             return existing_media, False  # Already exists
@@ -167,8 +130,7 @@ class MediaImporter:
             self.session.rollback()
             return self._file_exists_in_db(file_hash, filename), False
 
-    def import_file_pairs(self, file_pairs: Iterator[Tuple[FileInfo, Optional[FileInfo]]],
-                    progress_callback=None) -> Dict[str, int]:
+    def import_file_pairs(self, file_pairs: Iterator[Tuple[FileInfo, Optional[FileInfo]]], progress_callback=None) -> Dict[str, int]:
         stats = {'imported': 0, 'skipped': 0, 'errors': 0}
         batch_size = 100
         processed = 0
@@ -229,10 +191,10 @@ class MediaImporter:
         media_objects = []
         for file_info in files:
             try:
-                file_hash = self._calculate_file_hash(file_info.path)
+                file_hash = calculate_file_hash(file_info.path)
 
                 # Split the file path into components
-                storage_root, directory, filename = self._split_file_path(file_info.path)
+                storage_root, directory, filename = split_file_path(file_info.path, self.storage_root)
 
                 if self._file_exists_in_db(file_hash, filename):
                     stats['skipped'] += 1
@@ -244,27 +206,26 @@ class MediaImporter:
                 exif_data = file_info.exif_data or {}
 
                 media = Media(
-                    storage_root=storage_root,
-                    directory=directory,
-                    filename=filename,
-                    file_path=file_info.path,  # Keep for backwards compatibility during migration
-                    file_hash=file_hash,
-                    file_size=file_info.size,
-                    file_ext=file_info.extension,
-                    media_type_id=media_type_id,
-                    created=file_info.timestamp,
-                    is_original=True,
-                    exif_data=exif_data,
-                    # Extract specific EXIF fields
-                    gps_latitude=exif_data.get('gps_latitude'),
-                    gps_longitude=exif_data.get('gps_longitude'),
-                    gps_altitude=exif_data.get('gps_altitude'),
-                    camera_make=exif_data.get('camera_make'),
-                    camera_model=exif_data.get('camera_model'),
-                    lens_model=exif_data.get('lens_model'),
-                    width=exif_data.get('width'),
-                    height=exif_data.get('height'),
-                    rating=exif_data.get('rating')
+                    storage_root  = storage_root,
+                    directory     = directory,
+                    filename      = filename,
+                    file_hash     = file_hash,
+                    file_size     = file_info.size,
+                    file_ext      = file_info.extension,
+                    media_type_id = media_type_id,
+                    created       = file_info.timestamp,
+                    is_original   = True,
+                    exif_data     = exif_data,
+                      # Extract specific EXIF fields
+                    gps_latitude  = exif_data.get('gps_latitude'),
+                    gps_longitude = exif_data.get('gps_longitude'),
+                    gps_altitude  = exif_data.get('gps_altitude'),
+                    camera_make   = exif_data.get('camera_make'),
+                    camera_model  = exif_data.get('camera_model'),
+                    lens_model    = exif_data.get('lens_model'),
+                    width         = exif_data.get('width'),
+                    height        = exif_data.get('height'),
+                    rating        = exif_data.get('rating')
                 )
 
                 media_objects.append(media)

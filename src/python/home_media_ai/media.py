@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, BigInteger, Numeric
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+import contextlib
+from datetime import datetime
+from sqlalchemy import Integer, String, DateTime, Boolean, ForeignKey, BigInteger, Numeric
+from sqlalchemy.orm import relationship, Mapped, mapped_column, declarative_base
 from sqlalchemy.dialects.mysql import JSON
 
 Base = declarative_base()
@@ -18,10 +19,10 @@ class MediaType(Base):
     """
     __tablename__ = 'media_types'
 
-    id   = Column(Integer, primary_key=True)
-    name = Column(String(50), nullable=False, unique=True)
+    id  : Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
 
-    media = relationship("Media", back_populates="media_type")
+    media: Mapped[list["Media"]] = relationship("Media", back_populates="media_type")
 
 
 class Media(Base):
@@ -57,37 +58,37 @@ class Media(Base):
     """
     __tablename__ = 'media'
 
-    id            = Column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # New path component columns
-    storage_root  = Column(String(500), nullable=True)
-    directory     = Column(String(500), nullable=True)
-    filename      = Column(String(255), nullable=False)
+    storage_root: Mapped[str] = mapped_column(String(500), nullable=True)
+    directory   : Mapped[str] = mapped_column(String(500), nullable=True)
+    filename    : Mapped[str] = mapped_column(String(255), nullable=False)
     # Deprecated column - will be removed after migration
-    file_path     = Column(String(500), nullable=True)
-    file_hash     = Column(String(64), nullable=False, unique=True)
-    file_size     = Column(BigInteger, nullable=False)
-    file_ext      = Column(String(10), nullable=False)
-    media_type_id = Column(Integer, ForeignKey('media_types.id'), nullable=False)
-    created       = Column(DateTime, nullable=False)
-    is_original   = Column(Boolean, nullable=False, default=True)
-    origin_id     = Column(Integer, ForeignKey('media.id'), nullable=True)
-    exif_data     = Column(JSON, nullable=True)
+    # file_path     = Column(String(500), nullable=True)
+    file_hash    : Mapped[str]      = mapped_column(String(64), nullable=False, unique=True)
+    file_size    : Mapped[int]      = mapped_column(BigInteger, nullable=False)
+    file_ext     : Mapped[str]      = mapped_column(String(10), nullable=False)
+    media_type_id: Mapped[int]      = mapped_column(Integer, ForeignKey('media_types.id'), nullable=False)
+    created      : Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    is_original  : Mapped[bool]     = mapped_column(Boolean, nullable=False, default=True)
+    origin_id    : Mapped[int]      = mapped_column(Integer, ForeignKey('media.id'), nullable=True)
+    exif_data    : Mapped[dict]     = mapped_column(JSON, nullable=True)
 
     # EXIF metadata columns
-    gps_latitude  = Column(Numeric(10, 8), nullable=True)
-    gps_longitude = Column(Numeric(11, 8), nullable=True)
-    gps_altitude  = Column(Numeric(8, 2), nullable=True)
-    camera_make   = Column(String(100), nullable=True)
-    camera_model  = Column(String(100), nullable=True)
-    lens_model    = Column(String(100), nullable=True)
-    width         = Column(Integer, nullable=True)
-    height        = Column(Integer, nullable=True)
-    rating        = Column(Integer, nullable=True)
+    gps_latitude : Mapped[float] = mapped_column(Numeric(10, 8), nullable=True)
+    gps_longitude: Mapped[float] = mapped_column(Numeric(11, 8), nullable=True)
+    gps_altitude : Mapped[float] = mapped_column(Numeric(8, 2), nullable=True)
+    camera_make  : Mapped[str]   = mapped_column(String(100), nullable=True)
+    camera_model : Mapped[str]   = mapped_column(String(100), nullable=True)
+    lens_model   : Mapped[str]   = mapped_column(String(100), nullable=True)
+    width        : Mapped[int]   = mapped_column(Integer, nullable=True)
+    height       : Mapped[int]   = mapped_column(Integer, nullable=True)
+    rating       : Mapped[int]   = mapped_column(Integer, nullable=True)
 
-    media_type  = relationship("MediaType", back_populates="media")
-    derivatives = relationship("Media", backref="original", remote_side=[id])
+    media_type : Mapped["MediaType"]   = relationship("MediaType", back_populates="media")
+    derivatives: Mapped[list["Media"]] = relationship("Media", backref="original", remote_side=[id])
 
-    def get_full_path(self, use_local_mapping: bool = True):
+    def get_full_path(self, use_local_mapping: bool = True) -> str:
         """Construct full file path from components.
 
         Args:
@@ -99,15 +100,11 @@ class Media(Base):
         """
         if use_local_mapping:
             # Use path resolver for cross-platform compatibility
-            try:
+            with contextlib.suppress(ImportError):
                 from .config import get_path_resolver
                 resolver = get_path_resolver()
                 path = resolver.resolve_path(self.storage_root, self.directory, self.filename)
                 return str(path)
-            except ImportError:
-                # Config module not available, fall back to simple path construction
-                pass
-
         # Fallback: construct path from database values directly
         from pathlib import Path
         if self.storage_root and self.directory:
@@ -118,3 +115,23 @@ class Media(Base):
             return str(Path(self.directory) / self.filename)
         else:
             return self.filename
+
+    def read_as_array(self, use_local_mapping: bool = True):
+        """Read the media file and return it as a NumPy array.
+
+        This is a convenience method that combines get_full_path() with read_image_as_array().
+
+        Args:
+            use_local_mapping: If True, uses configuration to map storage_root to local paths.
+
+        Returns:
+            numpy.ndarray: Image data with native data type preserved.
+
+        Example:
+            >>> media = session.query(Media).first()
+            >>> img_array = media.read_as_array()
+            >>> print(img_array.shape, img_array.dtype)
+        """
+        from .io import read_image_as_array
+        file_path = self.get_full_path(use_local_mapping=use_local_mapping)
+        return read_image_as_array(file_path, media_type=self.media_type.name)

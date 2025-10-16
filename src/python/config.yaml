@@ -1,0 +1,46 @@
+# Configuration for home-media-ai on Windows
+
+# IMPORTANT: With strategy="config_only", the database storage_root column is IGNORED.
+# All files are resolved using default_storage_root + directory + filename.
+# This makes the storage_root column in the database essentially redundant.
+
+# Your local storage root (where files actually live on this machine)
+default_storage_root: "\\\\tiger\\photo\\RAW"
+
+# Alternative: If you want to map database storage_root values, use strategy="mapped"
+# and uncomment this section:
+# storage_roots:
+#   "tiger/photo/RAW": "\\\\tiger\\photo\\RAW"
+#   "/volume1/photo/RAW": "\\\\tiger\\photo\\RAW"
+
+path_resolution:
+  strategy: "config_only"  # Ignore database storage_root, use config default_storage_root only
+  # Other options: "mapped" (use storage_roots mapping), "database" (use DB paths directly)
+  validate_exists: false  # Set to true if you want to verify files exist
+  normalize_separators: true  # Automatically handle / vs \ separators
+
+database:
+  # Database connection string
+  # Format: mariadb+mariadbconnector://username:password@host:port/database
+  # Example for MariaDB on a NAS:
+  uri: "mariadb+mariadbconnector://media_user:your_password@tiger:3306/home_media_ai"
+
+  # Or if you're using MySQL:
+  # uri: "mysql+pymysql://media_user:your_password@tiger:3306/home_media_ai"
+
+  # Or for local development with SQLite:
+  # uri: "sqlite:///E:/programming/home-media-ai/home_media_ai.db"
+
+scanning:
+  # When importing/scanning, use this as the storage_root in the database
+  storage_root: "/volume1/photo/RAW"
+  batch_size: 100
+
+web:
+  port: 5100
+  host: "127.0.0.1"  # Only accessible locally
+  media_root: "\\\\tiger\\photo\\RAW"
+
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
