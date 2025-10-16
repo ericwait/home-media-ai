@@ -12,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "python"))
 
 import io
 import rawpy
-from flask import Flask, render_template, request, jsonify, send_file
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, send_file, Response
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import logging
@@ -376,6 +377,132 @@ def get_filter_options():
 
     except Exception as e:
         logger.error(f"Error fetching filter options: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/export')
+def export_filtered():
+    """
+    Export filtered images in various formats.
+
+    Query parameters:
+    - format: Export format ('json' or 'txt', default 'json')
+    - All filter parameters from /api/images (rating_min, camera_make, etc.)
+    - limit: Max number of results to export (default 5000, max 10000)
+
+    Returns:
+    - JSON format: {filter: {...}, total_count: N, exported_at: "...", image_ids: [...]}
+    - TXT format: One path per line (directory/filename without storage_root)
+    """
+    session = Session()
+
+    try:
+        # Parse format parameter
+        export_format = request.args.get('format', 'json').lower()
+        if export_format not in ('json', 'txt'):
+            return jsonify({'error': 'Invalid format. Use "json" or "txt"'}), 400
+
+        # Parse limit
+        limit = min(10000, max(1, int(request.args.get('limit', 5000))))
+
+        # Build WHERE clause (same logic as /api/images)
+        where_clauses = ["m.is_original = TRUE"]
+        params = {}
+        filter_info = {}
+
+        # Rating filter
+        if rating_min := request.args.get('rating_min'):
+            where_clauses.append("m.rating >= :rating_min")
+            params['rating_min'] = int(rating_min)
+            filter_info['rating_min'] = int(rating_min)
+
+        if rating_max := request.args.get('rating_max'):
+            where_clauses.append("m.rating <= :rating_max")
+            params['rating_max'] = int(rating_max)
+            filter_info['rating_max'] = int(rating_max)
+
+        # Media type filter
+        if media_type := request.args.get('media_type'):
+            where_clauses.append("mt.name = :media_type")
+            params['media_type'] = media_type
+            filter_info['media_type'] = media_type
+
+        # GPS filter
+        if has_gps := request.args.get('has_gps'):
+            if has_gps == 'true':
+                where_clauses.extend(
+                    ("m.gps_latitude IS NOT NULL", "m.gps_longitude IS NOT NULL")
+                )
+                filter_info['has_gps'] = True
+
+        # Camera filter
+        if camera_make := request.args.get('camera_make'):
+            where_clauses.append("m.camera_make = :camera_make")
+            params['camera_make'] = camera_make
+            filter_info['camera_make'] = camera_make
+
+        # Year filter
+        if year := request.args.get('year'):
+            where_clauses.append("YEAR(m.created) = :year")
+            params['year'] = int(year)
+            filter_info['year'] = int(year)
+
+        where_sql = " AND ".join(where_clauses)
+
+        # Export based on format
+        if export_format == 'json':
+            # Fetch image IDs only
+            query_sql = f"""
+                SELECT m.id
+                FROM media m
+                JOIN media_types mt ON m.media_type_id = mt.id
+                WHERE {where_sql}
+                ORDER BY m.created DESC
+                LIMIT :limit
+            """
+            params['limit'] = limit
+
+            result = session.execute(text(query_sql), params)
+            image_ids = [row[0] for row in result]
+
+            return jsonify({
+                'filter': filter_info,
+                'total_count': len(image_ids),
+                'exported_at': datetime.now().isoformat(),
+                'image_ids': image_ids
+            })
+
+        else:  # txt format
+            # Fetch directory/filename paths (without storage_root)
+            query_sql = f"""
+                SELECT m.directory, m.filename
+                FROM media m
+                JOIN media_types mt ON m.media_type_id = mt.id
+                WHERE {where_sql}
+                ORDER BY m.created DESC
+                LIMIT :limit
+            """
+            params['limit'] = limit
+
+            result = session.execute(text(query_sql), params)
+
+            # Build paths as directory/filename
+            paths = []
+            for row in result:
+                directory, filename = row
+                if directory:
+                    path = f"{directory}/{filename}"
+                else:
+                    path = filename
+                paths.append(path)
+
+            # Return as plain text
+            return Response('\n'.join(paths), mimetype='text/plain')
+
+    except Exception as e:
+        logger.error(f"Error exporting data: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
