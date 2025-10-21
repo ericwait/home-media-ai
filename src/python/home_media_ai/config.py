@@ -89,7 +89,7 @@ class Config:
             # Search for config.yaml in standard locations
             search_paths = [
                 Path.cwd() / "config.yaml",
-                Path(__file__).parent.parent.parent.parent / "config.yaml",
+                Path(__file__).parent.parent / "config.yaml",
                 Path.home() / ".config" / "home-media-ai" / "config.yaml",
             ]
             config_file = next((path for path in search_paths if path.exists()), None)
