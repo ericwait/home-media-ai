@@ -37,3 +37,4 @@ data/
 analysis_results/
 .ipynb_checkpoints/
 *.pt
+src/python/config.yaml
