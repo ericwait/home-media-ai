@@ -5,12 +5,17 @@ Provides a fluent interface for querying media from the database.
 Supports chaining filters and returning results as Media objects or DataFrames.
 
 Usage:
-    # Simple queries
-    query = MediaQuery(session)
-    results = query.dng().all()
-    results = query.rating(5).all()
+    # Auto-create session (recommended for simple queries)
+    with MediaQuery() as query:
+        results = query.dng().all()
 
-    # Chained filters
+    # Or manual session management
+    query = MediaQuery()
+    results = query.rating(5).all()
+    query.close()
+
+    # Or provide your own session
+    query = MediaQuery(session)
     results = query.canon().raw().rating_min(4).year(2024).all()
 
     # Return as DataFrame
@@ -21,14 +26,13 @@ Usage:
 """
 
 import pandas as pd
-from typing import List, Optional, Union
+from typing import List, Optional
 from datetime import datetime
-from pathlib import Path
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, extract, text
+from sqlalchemy import or_, func, extract
 
-from .media import Media, MediaType
+from .media import Media
 from .constants import RAW_EXTENSIONS
 
 
@@ -38,19 +42,71 @@ class MediaQuery:
     This class provides chainable methods for building complex queries
     in a readable way. Similar to LINQ in C# or method chaining in MATLAB.
 
+    Can be used with an explicit session or auto-create one:
+        # Auto-create (context manager)
+        with MediaQuery() as query:
+            results = query.rating(5).all()
+
+        # Auto-create (manual)
+        query = MediaQuery()
+        results = query.rating(5).all()
+        query.close()
+
+        # Explicit session
+        query = MediaQuery(session)
+        results = query.rating(5).all()
+
     Attributes:
         session: SQLAlchemy session
         _query: Current SQLAlchemy query object
+        _owns_session: Whether this instance created and owns the session
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Optional[Session] = None):
         """Initialize query helper.
 
         Args:
-            session: Active SQLAlchemy session
+            session: Optional SQLAlchemy session. If None, creates a new session.
         """
-        self.session = session
-        self._query = session.query(Media)
+        if session is None:
+            # Auto-create session using database module
+            from .database import get_session
+            self.session = get_session()
+            self._owns_session = True
+        else:
+            self.session = session
+            self._owns_session = False
+
+        self._query = self.session.query(Media)
+
+    def __enter__(self) -> 'MediaQuery':
+        """Enter context manager.
+
+        Returns:
+            Self for use in with statement
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager, closing session if we own it.
+
+        Args:
+            exc_type: Exception type if an error occurred
+            exc_val: Exception value if an error occurred
+            exc_tb: Exception traceback if an error occurred
+        """
+        self.close()
+        return False  # Don't suppress exceptions
+
+    def close(self):
+        """Close the session if we own it.
+
+        Only closes the session if it was auto-created by this instance.
+        If an external session was provided, it's the caller's responsibility to close it.
+        """
+        if self._owns_session and self.session:
+            self.session.close()
+            self._owns_session = False
 
     def reset(self) -> 'MediaQuery':
         """Reset query to start fresh.

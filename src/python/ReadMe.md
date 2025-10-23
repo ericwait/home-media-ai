@@ -4,31 +4,66 @@ A comprehensive media management and analysis system for organizing and analyzin
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Database Setup (First Time Only)](#database-setup-first-time-only)
 - [Configuration](#configuration)
+- [Core Usage](#core-usage)
 - [Package Structure](#package-structure)
-- [Live Development](#live-development)
 - [Tools and Scripts](#tools-and-scripts)
 - [Testing](#testing)
+- [Common Issues](#common-issues)
 
-## Quick Start
+## Installation
 
-### Installation
+Create the virtual environment from the root-level `environment.yml`:
 
 ```bash
-# Activate your environment
-mamba activate home-media-ai
+cd /path/to/home-media-ai
 
-# Install the package (from repository root)
-cd src/python
-pip install -e .
+# Using mamba (faster, recommended)
+mamba env create -f environment.yml
+
+# Or using conda
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate home-media-ai-stable
 ```
 
-### Configuration Setup
+## Database Setup (First Time Only)
+
+Before using the package, initialize the database schema:
+
+1. **Create a new database** (e.g., `home_media_ai`)
+   ```bash
+   mysql -u root -p -e "CREATE DATABASE home_media_ai CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci;"
+   ```
+
+2. **Run the SQL scripts in order:**
+   ```bash
+   mysql -u your_user -p home_media_ai < src/sql/01_create_taxonomies.sql
+   mysql -u your_user -p home_media_ai < src/sql/02_create_media.sql
+   mysql -u your_user -p home_media_ai < src/sql/06_add_exif_columns.sql
+   # Additional scripts as needed
+   ```
+
+3. **Verify the tables were created:**
+   ```bash
+   mysql -u your_user -p home_media_ai -e "SHOW TABLES;"
+   ```
+
+The core tables created:
+- `media_types` - File format categories (JPEG, RAW, PNG, etc.)
+- `media` - Individual media files with metadata and EXIF data
+- `taxonomy_nodes` - Taxonomic classification data
+
+## Configuration
+
+### Quick Setup
 
 1. **Copy the appropriate config template:**
    ```bash
-   # For Windows with UNC paths
+   cd src/python
    cp config.example.yaml config.yaml
    ```
 
@@ -44,6 +79,10 @@ pip install -e .
 
    database:
      uri: "mariadb+mariadbconnector://user:pass@host:3306/home_media_ai"
+
+   scanning:
+     storage_root: "/volume1/photo/RAW"  # What gets stored in DB
+     batch_size: 100
    ```
 
 3. **Test your configuration:**
@@ -58,8 +97,6 @@ pip install -e .
    path = resolver.resolve_path(None, "2024/October", "IMG_001.CR2")
    print(f"Resolved path: {path}")
    ```
-
-## Configuration
 
 ### Path Resolution Strategies
 
@@ -151,15 +188,204 @@ export HOME_MEDIA_AI_URI="mariadb+mariadbconnector://user:pass@host:3306/db"
 export PHOTO_ROOT="/mnt/photos"
 ```
 
+## Core Usage
+
+### 1. Querying Media Files (Recommended)
+
+Use [MediaQuery](home_media_ai/media_query.py:39) with automatic session management:
+
+```python
+from home_media_ai import MediaQuery
+
+# Context manager (recommended) - auto-closes session
+with MediaQuery() as query:
+    results = query.canon().raw().rating_min(4).year(2024).all()
+    for photo in results:
+        print(f"{photo.filename}: {photo.rating} stars")
+
+# Or manual session management
+query = MediaQuery()
+results = query.dng().all()
+query.close()  # Important: close when done
+
+# Example queries
+with MediaQuery() as query:
+    # Simple filter
+    raw_files = query.raw().all()
+
+# Each independent query gets its own instance
+with MediaQuery() as query:
+    dngs = query.dng().all()
+
+with MediaQuery() as query:
+    rated = query.rating(5).all()
+
+# Chained filters
+with MediaQuery() as query:
+    results = query.canon().raw().rating_min(4).year(2024).all()
+
+# Return as DataFrame
+with MediaQuery() as query:
+    df = query.rating_min(3).has_gps().to_dataframe()
+
+# Get file paths only
+with MediaQuery() as query:
+    paths = query.jpeg().year(2024).to_paths()
+
+# Random sampling
+with MediaQuery() as query:
+    samples = query.rating(4).random(10)
+
+# Statistics
+with MediaQuery() as query:
+    stats = query.canon().raw().stats()
+    # Returns: count, total_size_mb, avg_rating, etc.
+```
+
+### 2. Advanced: Direct Session Management
+
+For more control over transactions and multiple operations:
+
+```python
+from home_media_ai import session_scope, get_session, Media
+
+# Context manager with auto-commit/rollback
+with session_scope() as session:
+    results = session.query(Media).filter(Media.rating == 5).all()
+    # Session auto-commits here
+
+# Or manual session management
+session = get_session()
+try:
+    results = session.query(Media).all()
+finally:
+    session.close()
+
+# Use with MediaQuery for custom session
+with session_scope() as session:
+    query = MediaQuery(session)
+    results = query.rating(5).all()
+```
+
+#### Common Filter Methods
+
+**File Types**: `raw()`, `dng()`, `jpeg()`, `extension(ext)`, `originals_only()`, `derivatives_only()`
+
+**Ratings**: `rating(n)`, `rating_min(n)`, `rating_max(n)`, `rating_between(min, max)`, `has_rating()`, `no_rating()`
+
+**Camera**: `camera_make(make)`, `camera_model(model)`, `canon()`, `nikon()`, `sony()`
+
+**Location**: `has_gps()`, `no_gps()`, `gps_bbox(min_lat, max_lat, min_lon, max_lon)`
+
+**Date/Time**: `year(y)`, `month(m)`, `year_month(y, m)`, `date_range(start, end)`, `after(date)`, `before(date)`
+
+**Size**: `min_resolution(mp)`, `max_file_size(mb)`, `min_file_size(mb)`
+
+**Sorting**: `sort_by_date()`, `sort_by_rating()`, `sort_by_file_size()`, `sort_random()`
+
+**Results**: `all()`, `first()`, `one()`, `count()`, `limit(n)`, `random(n)`, `to_dataframe()`, `to_paths()`
+
+### 3. Reading Media Files
+
+```python
+from home_media_ai import MediaQuery, read_image_as_array
+
+# Query and read a file
+with MediaQuery() as query:
+    media = query.dng().first()
+
+    # Method 1: Use Media.read_as_array() convenience method
+    img_array = media.read_as_array()
+
+    # Method 2: Get path and read manually
+    file_path = media.get_full_path()
+    img_array = read_image_as_array(file_path)
+
+    # Image is returned as NumPy array with native dtype
+    print(img_array.shape, img_array.dtype)
+    # Example: (3024, 4032, 3) uint16 for RAW
+    # Example: (3024, 4032, 3) uint8 for JPEG
+```
+
+#### Reading Multiple Files
+
+```python
+# Get multiple files and read them
+with MediaQuery() as query:
+    images = query.canon().rating_min(4).limit(5).all()
+
+    for media in images:
+        img = media.read_as_array()
+        print(f"{media.filename}: {img.shape}, {img.dtype}")
+```
+
+### 4. Importing New Media
+
+Use [MediaScanner](home_media_ai/scanner.py:33) to find files and [MediaImporter](home_media_ai/importer.py:13) to add them to the database:
+
+```python
+from home_media_ai import MediaScanner, MediaImporter, ExifExtractor
+
+# Initialize EXIF extractor
+exif_extractor = ExifExtractor()
+
+# Scan a directory
+scanner = MediaScanner(
+    root_path="/path/to/photos",
+    exif_extractor=exif_extractor
+)
+
+# Import files to database
+importer = MediaImporter(
+    database_uri=config.database.uri,
+    use_config=True  # Uses config for storage_root
+)
+
+# Scan and import
+files = scanner.scan_files(progress_callback=print)
+stats = importer.bulk_import_files(list(files), progress_callback=print)
+
+print(f"Imported: {stats['imported']}, Skipped: {stats['skipped']}, Errors: {stats['errors']}")
+
+# Clean up
+importer.close()
+```
+
+#### Importing RAW+JPEG Pairs
+
+```python
+# For cameras that create RAW+JPEG pairs, group by timestamp
+grouped = scanner.group_by_timestamp(scanner.scan_files())
+pairs = scanner.identify_pairs(grouped)
+
+# Import with derivative relationships
+stats = importer.import_file_pairs(pairs, progress_callback=print)
+```
+
+### Complete Example Workflow
+
+```python
+from home_media_ai import MediaQuery
+
+# Simple and clean - session management handled automatically
+with MediaQuery() as query:
+    # Query files
+    photos = query.canon().raw().rating_min(4).year(2024).limit(10).all()
+
+    # Process files
+    for photo in photos:
+        img = photo.read_as_array()
+        # Do something with img...
+        print(f"{photo.filename}: {img.shape}")
+    # Session auto-closes here
+```
+
 ## Package Structure
 
 ```
 src/python/
 ├── config.yaml                 # Your config file (copy from example)
 ├── config.example.yaml         # Example config (all platforms)
-├── config.dev.yaml             # Development config example
-├── config.docker.yaml          # Docker config example
-├── config.synology.yaml        # Synology NAS config example
 ├── home_media_ai/              # Main package
 │   ├── __init__.py             # Package exports
 │   ├── config.py               # Configuration management
@@ -188,37 +414,6 @@ src/python/
     ├── test_exif_extractor.py  # EXIF tests (16 tests)
     └── fixtures/               # Test images
 ```
-
-## Live Development
-
-The [live_development.ipynb](notebooks/live_development.ipynb) notebook provides an interactive environment with auto-reload:
-
-```python
-# Auto-reload is enabled - edit source files and re-run cells!
-%load_ext autoreload
-%autoreload 2
-
-from home_media_ai import Media, read_image_as_array
-from home_media_ai.config import get_config
-
-# Query database
-results = session.query(Media).filter(
-    Media.rating == 5,
-    Media.camera_make.like('%Canon%')
-).all()
-
-# Load and display image
-img_array = results[0].read_as_array()
-plt.imshow(img_array)
-```
-
-### Features
-
-- **Auto-reload**: Edit source files and see changes immediately
-- **Database queries**: Pre-configured session management
-- **Image display**: Built-in matplotlib visualization
-- **Path resolution**: Automatic path mapping using config
-- **Metadata overlay**: Display EXIF data with images
 
 ## Tools and Scripts
 
@@ -265,70 +460,33 @@ python scripts/explore_metadata.py
 python scripts/explore_metadata.py --detailed
 ```
 
-## Package API
+## Live Development
 
-### Image I/O
-
-```python
-from home_media_ai import read_image_as_array, read_image_metadata
-
-# Read image as NumPy array (preserves data type)
-img = read_image_as_array('photo.CR2')  # Returns uint16 for RAW
-jpg = read_image_as_array('photo.jpg')  # Returns uint8 for JPEG
-
-# Quick metadata extraction (fast, doesn't load full image)
-metadata = read_image_metadata('photo.CR2')
-print(f"Dimensions: {metadata['width']}x{metadata['height']}")
-```
-
-### Database Queries
+The [live_development.ipynb](notebooks/live_development.ipynb) notebook provides an interactive environment with auto-reload:
 
 ```python
-from home_media_ai import Media, MediaQuery
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+# Auto-reload is enabled - edit source files and re-run cells!
+%load_ext autoreload
+%autoreload 2
 
-# Setup
-engine = create_engine('mariadb+mariadbconnector://...')
-Session = sessionmaker(bind=engine)
-session = Session()
+from home_media_ai import MediaQuery, read_image_as_array
 
-# Query 5-star Canon images from 2024
-results = session.query(Media).filter(
-    Media.rating == 5,
-    Media.camera_make.like('%Canon%'),
-    Media.created >= datetime(2024, 1, 1),
-    Media.created < datetime(2025, 1, 1)
-).all()
+# Query database (no session setup needed!)
+with MediaQuery() as query:
+    results = query.rating(5).canon().all()
 
-# Load image using convenience method
-img_array = results[0].read_as_array()
+    # Load and display image
+    img_array = results[0].read_as_array()
+    plt.imshow(img_array / 65535.0)  # Normalize for display
 ```
 
-### Utility Functions
+### Features
 
-```python
-from home_media_ai.utils import (
-    infer_media_type_from_extension,
-    calculate_file_hash,
-    split_file_path,
-    validate_file_extension
-)
-
-# Media type inference
-media_type = infer_media_type_from_extension('.CR2')  # Returns 'raw_image'
-
-# File hashing
-hash_value = calculate_file_hash('photo.jpg')  # SHA-256 hex string
-
-# Path splitting
-storage_root, directory, filename = split_file_path(
-    '/volume1/photo/RAW/2024/October/IMG_001.CR2',
-    storage_root='/volume1/photo/RAW'
-)
-# Returns: ('/volume1/photo/RAW', '2024/October', 'IMG_001.CR2')
-```
+- **Auto-reload**: Edit source files and see changes immediately
+- **Database queries**: Pre-configured session management
+- **Image display**: Built-in matplotlib visualization
+- **Path resolution**: Automatic path mapping using config
+- **Metadata overlay**: Display EXIF data with images
 
 ## Testing
 
@@ -407,6 +565,15 @@ Or use environment variable:
 $env:HOME_MEDIA_AI_URI = "mariadb+mariadbconnector://user:pass@host:3306/home_media_ai"
 ```
 
+### Issue: Database connection fails
+
+**Solution:** Verify database is running and credentials are correct:
+
+```bash
+# Test connection
+mysql -u your_user -p -h host -P 3306 home_media_ai -e "SELECT COUNT(*) FROM media;"
+```
+
 ## Machine Learning Integration
 
 The package is designed to support ML workflows:
@@ -414,12 +581,17 @@ The package is designed to support ML workflows:
 ### Feature Extraction
 
 ```python
+from home_media_ai import MediaQuery
+
 # Extract features from rated images
-for media in session.query(Media).filter(Media.rating >= 4):
-    img = media.read_as_array()
-    # Extract features (histogram, edges, color, etc.)
-    features = extract_features(img)
-    # Store for training
+with MediaQuery() as query:
+    rated_media = query.rating_min(4).all()
+
+    for media in rated_media:
+        img = media.read_as_array()
+        # Extract features (histogram, edges, color, etc.)
+        features = extract_features(img)
+        # Store for training
 ```
 
 ### Potential ML Applications
@@ -427,15 +599,16 @@ for media in session.query(Media).filter(Media.rating >= 4):
 1. **Quality Prediction** - Predict ratings from image features
 2. **Clustering** - Group similar images automatically
 3. **Anomaly Detection** - Find unusual/interesting images
-4. **Auto-Tagging** - Predict keywords from visual features
+4. **Auto-Tagging** - Predict keywords from visual content
+5. **Object Detection** - YOLO-based detection (see yolo_*.ipynb notebooks)
 
 See [image_explorer.ipynb](notebooks/image_explorer.ipynb) for examples.
 
 ## Additional Resources
 
-- **Media Query Examples**: See [media_query_examples.md](media_query_examples.md)
-- **Configuration Examples**: Check `config.*.yaml` files
-- **Live Development**: Open [notebooks/live_development.ipynb](notebooks/live_development.ipynb)
+- **Example Notebooks**: Check [notebooks/](notebooks/) directory
+- **Configuration Examples**: `config.*.yaml` files for different platforms
+- **SQL Schema**: [src/sql/](../sql/) directory
 
 ## Questions?
 
@@ -445,4 +618,4 @@ Check the configuration examples in this directory:
 - `config.docker.yaml` - Docker container setup
 - `config.synology.yaml` - Synology NAS setup
 
-For common issues, see the troubleshooting section above or check existing issues in the repository.
+For common issues, see the troubleshooting section above.

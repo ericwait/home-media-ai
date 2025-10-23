@@ -4,6 +4,8 @@ from .importer import MediaImporter
 from .exif_extractor import ExifExtractor
 from .media_query import MediaQuery
 from .io import read_image_as_array, read_image_metadata
+from .database import get_engine, get_session, session_scope, reset_engine
+
 from .utils import (
     infer_media_type_from_extension,
     get_all_supported_extensions,
@@ -22,6 +24,10 @@ __all__ = [
     "MediaQuery",
     "read_image_as_array",
     "read_image_metadata",
+    "get_engine",
+    "get_session",
+    "session_scope",
+    "reset_engine",
     "infer_media_type_from_extension",
     "get_all_supported_extensions",
     "calculate_file_hash",
