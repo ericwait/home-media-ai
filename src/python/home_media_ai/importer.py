@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, List, Optional, Iterator, Tuple
+from typing import Dict, List, Optional, Iterator, Tuple, TYPE_CHECKING
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
 from .media import Media, MediaType
-from .scanner import FileInfo
 from .utils import calculate_file_hash, split_file_path
+
+if TYPE_CHECKING:
+    from .scanner import FileInfo
 
 
 class MediaImporter:

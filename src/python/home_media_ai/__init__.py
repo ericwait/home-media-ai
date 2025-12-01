@@ -1,11 +1,6 @@
+# Core imports that should always be available
 from .media import Media, MediaType, Base
-from .scanner import MediaScanner, FileInfo
-from .importer import MediaImporter
-from .exif_extractor import ExifExtractor
-from .media_query import MediaQuery
-from .io import read_image_as_array, read_image_metadata
 from .database import get_engine, get_session, session_scope, reset_engine
-
 from .utils import (
     infer_media_type_from_extension,
     get_all_supported_extensions,
@@ -14,6 +9,34 @@ from .utils import (
     validate_file_extension,
     normalize_extension
 )
+
+# Optional imports - these may not be needed for basic usage (e.g., web viewer)
+try:
+    from .scanner import MediaScanner, FileInfo
+except ImportError:
+    MediaScanner = None
+    FileInfo = None
+
+try:
+    from .importer import MediaImporter
+except ImportError:
+    MediaImporter = None
+
+try:
+    from .exif_extractor import ExifExtractor
+except ImportError:
+    ExifExtractor = None
+
+try:
+    from .media_query import MediaQuery
+except ImportError:
+    MediaQuery = None
+
+try:
+    from .io import read_image_as_array, read_image_metadata
+except ImportError:
+    read_image_as_array = None
+    read_image_metadata = None
 
 __version__ = "1.0.0"
 __all__ = [

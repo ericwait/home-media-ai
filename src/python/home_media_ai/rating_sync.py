@@ -33,7 +33,8 @@ def sync_rating_to_file(
     media: Media,
     rating: int,
     session: Session,
-    use_local_mapping: bool = True
+    use_local_mapping: bool = True,
+    file_path: Optional[Path] = None
 ) -> bool:
     """Sync rating to both database and file metadata.
 
@@ -45,7 +46,9 @@ def sync_rating_to_file(
         media: Media object to update.
         rating: Rating value (0-5, where 0 means unrated).
         session: Database session.
-        use_local_mapping: Use local path mapping from config.
+        use_local_mapping: Use local path mapping from config (ignored if file_path provided).
+        file_path: Optional pre-resolved file path. If provided, uses this instead of
+                  calling media.get_full_path().
 
     Returns:
         True if sync was successful, False otherwise.
@@ -60,7 +63,10 @@ def sync_rating_to_file(
         session.commit()
 
         # Get file path
-        file_path = Path(media.get_full_path(use_local_mapping=use_local_mapping))
+        if file_path is None:
+            file_path = Path(media.get_full_path(use_local_mapping=use_local_mapping))
+        else:
+            file_path = Path(file_path)
 
         if not file_path.exists():
             logger.warning(f"File not found for rating sync: {file_path}")

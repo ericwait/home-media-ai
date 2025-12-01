@@ -23,6 +23,9 @@ from sqlalchemy.orm import sessionmaker
 import logging
 from PIL import Image, UnidentifiedImageError
 
+# Configure PIL to handle large images
+Image.MAX_IMAGE_PIXELS = None  # Remove size limit for thumbnail generation
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -707,16 +710,32 @@ def update_rating(image_id):
         if not 0 <= rating <= 5:
             return jsonify({'error': 'Rating must be between 0 and 5'}), 400
 
-        # Get media object
+        # Get media object with path components
         from home_media_ai.media import Media
+        result = session.execute(
+            text("""
+                SELECT id, storage_root, directory, filename
+                FROM media
+                WHERE id = :id
+            """),
+            {'id': image_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return jsonify({'error': 'Image not found'}), 404
+
+        storage_root, directory, filename = row[1], row[2], row[3]
+
+        # Get Media object for rating sync
         media = session.query(Media).filter(Media.id == image_id).first()
 
-        if not media:
-            return jsonify({'error': 'Image not found'}), 404
+        # Resolve file path using web app's path resolution
+        file_path = resolve_media_path(storage_root, directory, filename)
 
         # Sync rating to database and file
         from home_media_ai.rating_sync import sync_rating_to_file
-        success = sync_rating_to_file(media, rating, session)
+        success = sync_rating_to_file(media, rating, session, file_path=Path(file_path))
 
         return jsonify({
             'id': image_id,

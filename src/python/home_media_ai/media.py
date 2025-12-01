@@ -155,7 +155,7 @@ class Media(Base):
         """
         if use_local_mapping:
             # Use path resolver for cross-platform compatibility
-            with contextlib.suppress(ImportError):
+            with contextlib.suppress(ImportError, ValueError, FileNotFoundError):
                 from .config import get_path_resolver
                 resolver = get_path_resolver()
                 path = resolver.resolve_path(self.storage_root, self.directory, self.filename)

@@ -74,14 +74,19 @@
         border-radius: 8px;
         overflow: hidden;
     }
-    .current-image-container {
+    .content-area {
         flex: 1;
         position: relative;
+        min-height: 0;
+        overflow: hidden;
+    }
+    .current-image-container {
+        position: absolute;
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         background: #0a0a0a;
-        min-height: 0;
     }
     .current-image {
         max-width: 100%;
@@ -108,54 +113,26 @@
         font-size: 0.85rem;
         color: #999;
     }
-    .thumbnail-strip {
-        display: flex;
-        gap: 0.5rem;
-        padding: 0.5rem;
-        background: #1a1a1a;
-        border-top: 1px solid #333;
-        overflow-x: auto;
-    }
-    .thumbnail-item {
-        flex-shrink: 0;
-        width: 80px;
-        height: 60px;
-        border: 2px solid transparent;
-        border-radius: 4px;
-        overflow: hidden;
-        cursor: pointer;
-        opacity: 0.6;
-        transition: all 0.2s;
-    }
-    .thumbnail-item.current {
-        border-color: #4a9eff;
-        opacity: 1;
-    }
-    .thumbnail-item:hover {
-        opacity: 1;
-    }
-    .thumbnail-item img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
     .burst-view {
+        position: absolute;
+        inset: 0;
         display: none;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: 1rem;
         padding: 1rem;
         background: #0a0a0a;
-        align-items: center;
+        align-content: center;
         justify-content: center;
+        overflow-y: auto;
     }
     .burst-view.active {
         display: flex;
     }
     .burst-item {
         position: relative;
-        width: calc(50% - 0.25rem);
-        max-width: 400px;
-        aspect-ratio: 4/3;
+        flex: 0 1 calc(50% - 0.5rem);
+        max-width: 600px;
+        aspect-ratio: 3/2;
         border: 3px solid #333;
         border-radius: 8px;
         overflow: hidden;
@@ -171,7 +148,8 @@
     .burst-item img {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain;
+        background: #000;
     }
     .burst-item .burst-index {
         position: absolute;
@@ -192,6 +170,39 @@
         padding: 0.25rem 0.5rem;
         border-radius: 4px;
         font-size: 0.9rem;
+    }
+    .thumbnail-strip {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        background: #1a1a1a;
+        border-top: 1px solid #333;
+        overflow-x: auto;
+        flex-shrink: 0;
+        height: 90px;
+    }
+    .thumbnail-item {
+        flex-shrink: 0;
+        width: 100px;
+        height: 75px;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        overflow: hidden;
+        cursor: pointer;
+        opacity: 0.6;
+        transition: all 0.2s;
+    }
+    .thumbnail-item.current {
+        border-color: #4a9eff;
+        opacity: 1;
+    }
+    .thumbnail-item:hover {
+        opacity: 1;
+    }
+    .thumbnail-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     .help-panel {
         position: fixed;
@@ -239,13 +250,15 @@
 
     <div class="main-view">
         <div class="image-panel">
-            <div class="current-image-container" id="imageContainer">
-                <img class="current-image" id="currentImage" src="" alt="">
-                <div class="rating-overlay" id="ratingOverlay"></div>
-                <div class="info-overlay" id="infoOverlay"></div>
-                <div class="loading-overlay" id="loadingOverlay" style="display: none;">Loading...</div>
+            <div class="content-area">
+                <div class="current-image-container" id="imageContainer">
+                    <img class="current-image" id="currentImage" src="" alt="">
+                    <div class="rating-overlay" id="ratingOverlay"></div>
+                    <div class="info-overlay" id="infoOverlay"></div>
+                    <div class="loading-overlay" id="loadingOverlay" style="display: none;">Loading...</div>
+                </div>
+                <div class="burst-view" id="burstView"></div>
             </div>
-            <div class="burst-view" id="burstView"></div>
             <div class="thumbnail-strip" id="thumbnailStrip"></div>
         </div>
     </div>
@@ -383,13 +396,11 @@ function showBurstView(burstIds) {
     `).join('');
 
     burstView.classList.add('active');
-    document.getElementById('imageContainer').style.display = 'none';
 }
 
 function hideBurstView() {
     inBurstView = false;
     document.getElementById('burstView').classList.remove('active');
-    document.getElementById('imageContainer').style.display = 'flex';
 }
 
 function selectBurstItem(index) {
@@ -458,10 +469,10 @@ async function handleBurstRating(rating) {
     updateProgress();
 }
 
-// Navigate with arrow keys (auto-rate unrated burst images as 1)
+// Navigate with arrow keys - jump between burst groups
 function navigate(direction) {
+    // Auto-rate unrated images in current burst as 1 before leaving
     if (inBurstView) {
-        // In burst view, auto-rate unrated images as 1 before leaving
         const burstItems = document.querySelectorAll('.burst-item');
         burstItems.forEach(item => {
             const id = parseInt(item.dataset.id);
@@ -471,14 +482,58 @@ function navigate(direction) {
                 img.rating = 1;
             }
         });
-        hideBurstView();
         updateProgress();
     }
 
-    const newIndex = currentIndex + direction;
-    if (newIndex >= 0 && newIndex < images.length) {
+    // Find the next burst group or single image
+    const newIndex = findNextGroup(currentIndex, direction);
+    if (newIndex !== null) {
         showImage(newIndex);
     }
+}
+
+// Find the next burst group or single image
+function findNextGroup(fromIndex, direction) {
+    const currentImg = images[fromIndex];
+    const currentBurst = bursts.find(b => b.includes(currentImg.id));
+
+    if (direction > 0) {
+        // Moving forward
+        if (currentBurst) {
+            // Skip to after the current burst
+            const lastBurstId = currentBurst[currentBurst.length - 1];
+            const lastBurstIndex = images.findIndex(img => img.id === lastBurstId);
+
+            // Find next image that's not in the same burst
+            for (let i = lastBurstIndex + 1; i < images.length; i++) {
+                return i;
+            }
+        } else {
+            // Currently on a single image, move to next
+            if (fromIndex + 1 < images.length) {
+                return fromIndex + 1;
+            }
+        }
+    } else {
+        // Moving backward
+        if (currentBurst) {
+            // Skip to before the current burst
+            const firstBurstId = currentBurst[0];
+            const firstBurstIndex = images.findIndex(img => img.id === firstBurstId);
+
+            // Find previous image
+            if (firstBurstIndex > 0) {
+                return firstBurstIndex - 1;
+            }
+        } else {
+            // Currently on a single image, move to previous
+            if (fromIndex > 0) {
+                return fromIndex - 1;
+            }
+        }
+    }
+
+    return null; // No more groups in that direction
 }
 
 // Keyboard handler

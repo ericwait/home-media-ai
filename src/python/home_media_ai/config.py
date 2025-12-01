@@ -6,10 +6,15 @@ Provides path resolution for cross-platform storage root mapping.
 """
 
 import os
-import yaml
 from pathlib import Path
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, field
+
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
 
 
 @dataclass
@@ -94,7 +99,7 @@ class Config:
             ]
             config_file = next((path for path in search_paths if path.exists()), None)
 
-        if config_file and config_file.exists():
+        if config_file and config_file.exists() and HAS_YAML:
             with open(config_file, 'r') as f:
                 data = yaml.safe_load(f) or {}
                 config = cls.from_dict(data)
@@ -102,7 +107,7 @@ class Config:
                 config._apply_env_overrides()
                 return config
         else:
-            # No config file found, use defaults with env overrides
+            # No config file found or yaml not available, use defaults with env overrides
             config = cls()
             config._apply_env_overrides()
             return config
