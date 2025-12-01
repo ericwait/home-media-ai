@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Home Media AI{% endblock %}
+
+{% block extra_css %}
+<style>
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: calc(100vh - 100px);
+    }
+    .login-box {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 2rem;
+        width: 100%;
+        max-width: 400px;
+    }
+    .login-box h2 {
+        color: #4a9eff;
+        margin-bottom: 1.5rem;
+        text-align: center;
+    }
+    .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    .login-form input {
+        padding: 0.75rem;
+        font-size: 1rem;
+    }
+    .login-form button {
+        padding: 1rem;
+        font-size: 1rem;
+    }
+    .error-message {
+        background: #ff4444;
+        color: white;
+        padding: 0.75rem;
+        border-radius: 4px;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-box">
+        <h2>Photo Rating Login</h2>
+        {% if error %}
+        <div class="error-message">{{ error }}</div>
+        {% endif %}
+        <form class="login-form" method="POST">
+            <input type="text" name="username" placeholder="Username" required autofocus>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

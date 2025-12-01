@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  photo-rater:
+    build: .
+    container_name: home-media-ai-rater
+    restart: unless-stopped
+    ports:
+      - "5100:5100"
+    volumes:
+      # Mount your photo storage (adjust paths for your NAS)
+      - /volume1/photo/RAW:/mnt/media:ro
+      # Config file (optional - can use environment variables instead)
+      # - ./src/python/config.yaml:/app/src/python/config.yaml:ro
+    environment:
+      # Database connection
+      - HOME_MEDIA_AI_URI=mariadb+mariadbconnector://user:password@host:3306/home_media_ai
+
+      # Photo root directory (matches volume mount above)
+      - HOME_MEDIA_AI_PHOTO_ROOT=/mnt/media
+
+      # Flask secret key for sessions (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+      - FLASK_SECRET_KEY=your_secret_key_here
+
+      # Session timeout in hours
+      - SESSION_TIMEOUT_HOURS=24
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5100/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Example usage:
+# 1. Copy this file and adjust environment variables
+# 2. Generate Flask secret:
+#    python -c "import secrets; print(secrets.token_hex(32))"
+# 3. Create the users table in your database (see User model in media.py)
+# 4. Build and run:
+#    docker-compose up -d --build
+# 5. Add users with:
+#    python src/python/scripts/manage_users.py add <username>
+# 6. Access at http://nas-ip:5100/rate

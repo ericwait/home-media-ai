@@ -100,6 +100,10 @@ class MediaScanner:
                 if not media_type:
                     continue
 
+                # Skip thumbnail files
+                if file_path.stem.endswith('_thumb'):
+                    continue
+
                 timestamp = self._get_file_timestamp(file_path)
                 if not timestamp:
                     continue

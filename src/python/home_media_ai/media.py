@@ -1,10 +1,63 @@
 import contextlib
+import hashlib
+import secrets
 from datetime import datetime
 from sqlalchemy import Integer, String, DateTime, Boolean, ForeignKey, BigInteger, Numeric
 from sqlalchemy.orm import relationship, Mapped, mapped_column, declarative_base
 from sqlalchemy.dialects.mysql import JSON
 
 Base = declarative_base()
+
+
+class User(Base):
+    """Represents a user who can rate photos.
+
+    Attributes:
+        id: Unique identifier for the user.
+        username: Unique username for login.
+        password_hash: Hashed password.
+        salt: Unique salt for this user's password.
+        display_name: Friendly name to display.
+        is_active: Whether the user can log in.
+        created_at: When the user was created.
+        last_login: When the user last logged in.
+    """
+    __tablename__ = 'users'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    salt: Mapped[str] = mapped_column(String(32), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    last_login: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    def set_password(self, password: str) -> None:
+        """Set a new password for this user."""
+        self.salt = secrets.token_hex(16)
+        self.password_hash = hashlib.sha256(f"{self.salt}{password}".encode()).hexdigest()
+
+    def check_password(self, password: str) -> bool:
+        """Check if the provided password matches."""
+        test_hash = hashlib.sha256(f"{self.salt}{password}".encode()).hexdigest()
+        return test_hash == self.password_hash
+
+    @staticmethod
+    def validate_password_strength(password: str) -> tuple[bool, str]:
+        """Validate password meets minimum security requirements."""
+        import re
+        if len(password) < 12:
+            return False, "Password must be at least 12 characters"
+        if not re.search(r'[A-Z]', password):
+            return False, "Password must contain at least one uppercase letter"
+        if not re.search(r'[a-z]', password):
+            return False, "Password must contain at least one lowercase letter"
+        if not re.search(r'\d', password):
+            return False, "Password must contain at least one digit"
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            return False, "Password must contain at least one special character"
+        return True, ""
 
 
 class MediaType(Base):
@@ -53,6 +106,7 @@ class Media(Base):
         width: Image width in pixels.
         height: Image height in pixels.
         rating: Quality rating 0-5 stars.
+        thumbnail_path: Path to cached thumbnail image (relative to storage_root).
         media_type: Relationship to the MediaType class.
         derivatives: Relationship to derivative Media instances.
     """
@@ -84,6 +138,7 @@ class Media(Base):
     width        : Mapped[int]   = mapped_column(Integer, nullable=True)
     height       : Mapped[int]   = mapped_column(Integer, nullable=True)
     rating       : Mapped[int]   = mapped_column(Integer, nullable=True)
+    thumbnail_path: Mapped[str]  = mapped_column(String(500), nullable=True)
 
     media_type : Mapped["MediaType"]   = relationship("MediaType", back_populates="media")
     derivatives: Mapped[list["Media"]] = relationship("Media", backref="original", remote_side=[id])

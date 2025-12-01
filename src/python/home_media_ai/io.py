@@ -12,6 +12,37 @@ from PIL import Image
 from .utils import infer_media_type_from_extension, get_all_supported_extensions
 
 
+def normalize_to_uint8(img_array: np.ndarray) -> np.ndarray:
+    """Convert image array to uint8 format for PIL/display compatibility.
+
+    Handles various input dtypes:
+    - uint8: returned as-is
+    - uint16: scaled from 0-65535 to 0-255
+    - float: assumed 0-1 range, scaled to 0-255
+
+    Args:
+        img_array: NumPy array of any supported dtype.
+
+    Returns:
+        NumPy array with dtype uint8.
+
+    Example:
+        >>> raw_img = read_image_as_array('photo.CR2')  # uint16
+        >>> img_8bit = normalize_to_uint8(raw_img)
+        >>> print(img_8bit.dtype)
+        uint8
+    """
+    if img_array.dtype == np.uint8:
+        return img_array
+    elif img_array.dtype == np.uint16:
+        return (img_array / 256).astype(np.uint8)
+    elif img_array.dtype in (np.float32, np.float64):
+        return (img_array * 255).clip(0, 255).astype(np.uint8)
+    else:
+        # Fallback: try to convert directly
+        return img_array.astype(np.uint8)
+
+
 def read_image_as_array(
     file_path: Union[str, Path],
     media_type: str = None
@@ -57,11 +88,12 @@ def read_image_as_array(
     # Determine media type from extension if not provided
     if media_type is None:
         media_type = infer_media_type_from_extension(file_path.suffix.lower())
-        if media_type is None:
-            raise ValueError(
-                f"Unrecognized file extension: {file_path.suffix}. "
-                f"Supported extensions: {get_all_supported_extensions()}"
-            )
+
+    if media_type is None:
+        raise ValueError(
+            f"Unrecognized file extension: {file_path.suffix}. "
+            f"Supported extensions: {get_all_supported_extensions()}"
+        )
 
     # Use appropriate reader based on media type
     if media_type == 'raw_image':

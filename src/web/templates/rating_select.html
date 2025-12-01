@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Select Photos to Rate - Home Media AI{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-title {
+        color: #4a9eff;
+        margin-bottom: 2rem;
+        font-size: 1.75rem;
+    }
+    .year-section {
+        margin-bottom: 2rem;
+    }
+    .year-header {
+        color: #e0e0e0;
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #333;
+    }
+    .month-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+    .month-card {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 1.25rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    .month-card:hover {
+        border-color: #4a9eff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(74, 158, 255, 0.15);
+    }
+    .month-name {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    .month-stats {
+        font-size: 0.85rem;
+        color: #999;
+        margin-bottom: 0.75rem;
+    }
+    .progress-bar {
+        height: 6px;
+        background: #333;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    .progress-fill {
+        height: 100%;
+        background: #4a9eff;
+        border-radius: 3px;
+        transition: width 0.3s;
+    }
+    .progress-complete {
+        background: #4caf50;
+    }
+    .progress-text {
+        font-size: 0.75rem;
+        color: #666;
+        margin-top: 0.5rem;
+        text-align: right;
+    }
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    .logout-link {
+        float: right;
+        color: #999;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+    .logout-link:hover {
+        color: #4a9eff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="/logout" class="logout-link">Logout</a>
+    <h2 class="page-title">Select Photos to Rate</h2>
+    <div id="content" class="loading">Loading...</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+
+async function loadYearsMonths() {
+    try {
+        const response = await fetch('/api/years-months');
+        const data = await response.json();
+
+        if (data.error) {
+            document.getElementById('content').innerHTML = `<p>Error: ${data.error}</p>`;
+            return;
+        }
+
+        // Group by year
+        const byYear = {};
+        for (const item of data.items) {
+            if (!byYear[item.year]) {
+                byYear[item.year] = [];
+            }
+            byYear[item.year].push(item);
+        }
+
+        // Sort years descending
+        const years = Object.keys(byYear).sort((a, b) => b - a);
+
+        let html = '';
+        for (const year of years) {
+            // Sort months ascending within year
+            const months = byYear[year].sort((a, b) => a.month - b.month);
+
+            html += `<div class="year-section">
+                <h3 class="year-header">${year}</h3>
+                <div class="month-grid">`;
+
+            for (const item of months) {
+                const progressClass = item.progress >= 100 ? 'progress-complete' : '';
+                html += `
+                    <a href="/rate/${item.year}/${item.month}" class="month-card">
+                        <div class="month-name">${MONTH_NAMES[item.month]}</div>
+                        <div class="month-stats">${item.rated} / ${item.total} rated</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill ${progressClass}" style="width: ${item.progress}%"></div>
+                        </div>
+                        <div class="progress-text">${item.progress}%</div>
+                    </a>
+                `;
+            }
+
+            html += '</div></div>';
+        }
+
+        document.getElementById('content').innerHTML = html || '<p>No images found</p>';
+
+    } catch (error) {
+        document.getElementById('content').innerHTML = `<p>Error loading data: ${error.message}</p>`;
+    }
+}
+
+loadYearsMonths();
+{% endblock %}

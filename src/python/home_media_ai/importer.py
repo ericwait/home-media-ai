@@ -11,7 +11,8 @@ from .utils import calculate_file_hash, split_file_path
 
 
 class MediaImporter:
-    def __init__(self, database_uri: str, storage_root: Optional[str] = None, use_config: bool = True):
+    def __init__(self, database_uri: str, storage_root: Optional[str] = None, use_config: bool = True,
+                 generate_thumbnails: bool = False):
         """Initialize MediaImporter.
 
         Args:
@@ -21,10 +22,12 @@ class MediaImporter:
                          If None, will try to load from config.
             use_config: Whether to load configuration from config.yaml for storage_root.
                        If True and storage_root is None, will use config.scanning.storage_root.
+            generate_thumbnails: Whether to generate thumbnails during import.
         """
         self.engine = create_engine(database_uri)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
+        self.generate_thumbnails = generate_thumbnails
 
         # Determine storage root
         if storage_root:
@@ -42,6 +45,27 @@ class MediaImporter:
 
         self._media_types_cache = {}
         self._load_media_types()
+
+    def _generate_thumbnail_for_media(self, media: Media) -> None:
+        """Generate thumbnail for a media item if enabled.
+
+        Args:
+            media: The Media object to generate thumbnail for.
+        """
+        if not self.generate_thumbnails:
+            return
+
+        # Only generate for image originals
+        if not media.is_original or media.media_type_id != self._media_types_cache.get('image', 1):
+            return
+
+        try:
+            from .thumbnails import generate_thumbnail
+            generate_thumbnail(media, self.session)
+        except Exception as e:
+            # Log but don't fail import on thumbnail errors
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to generate thumbnail for {media.filename}: {e}")
 
     def _load_media_types(self):
         for media_type in self.session.query(MediaType).all():
@@ -101,7 +125,6 @@ class MediaImporter:
             storage_root=storage_root,
             directory=directory,
             filename=filename,
-            file_path=file_info.path,  # Keep for backwards compatibility during migration
             file_hash=file_hash,
             file_size=file_info.size,
             file_ext=file_info.extension,
@@ -125,6 +148,8 @@ class MediaImporter:
         try:
             self.session.add(media)
             self.session.flush()
+            # Generate thumbnail for newly imported media
+            self._generate_thumbnail_for_media(media)
             return media, True  # Newly created
         except IntegrityError:
             self.session.rollback()

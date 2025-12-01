@@ -5,15 +5,19 @@ A read-only web interface for exploring your media database.
 """
 import os
 import sys
+import re
+import hashlib
+import secrets
 from pathlib import Path
+from functools import wraps
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "python"))
 
 import io
 import rawpy
-from datetime import datetime
-from flask import Flask, render_template, request, jsonify, send_file, Response
+from datetime import datetime, timedelta
+from flask import Flask, render_template, request, jsonify, send_file, Response, session as flask_session, redirect, url_for
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import logging
@@ -25,7 +29,53 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=int(os.environ.get('SESSION_TIMEOUT_HOURS', 24)))
+
+# Authentication configuration
+LOGIN_ATTEMPTS = {}  # Track login attempts by IP
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 60
+
+
+def check_rate_limit(ip: str) -> bool:
+    """Check if IP is rate limited for login attempts."""
+    if ip not in LOGIN_ATTEMPTS:
+        return True
+
+    attempts, last_attempt = LOGIN_ATTEMPTS[ip]
+    if datetime.now() - last_attempt > timedelta(seconds=LOGIN_LOCKOUT_SECONDS):
+        # Reset after lockout period
+        del LOGIN_ATTEMPTS[ip]
+        return True
+
+    return attempts < MAX_LOGIN_ATTEMPTS
+
+
+def record_login_attempt(ip: str, success: bool):
+    """Record a login attempt."""
+    if success:
+        if ip in LOGIN_ATTEMPTS:
+            del LOGIN_ATTEMPTS[ip]
+    else:
+        if ip in LOGIN_ATTEMPTS:
+            attempts, _ = LOGIN_ATTEMPTS[ip]
+            LOGIN_ATTEMPTS[ip] = (attempts + 1, datetime.now())
+        else:
+            LOGIN_ATTEMPTS[ip] = (1, datetime.now())
+
+
+def login_required(f):
+    """Decorator to require authentication for routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not flask_session.get('authenticated'):
+            if request.is_json:
+                return jsonify({'error': 'Authentication required'}), 401
+            return redirect(url_for('login'))
+
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Database connection
 DATABASE_URI = os.getenv('HOME_MEDIA_AI_URI')
@@ -589,6 +639,306 @@ def get_thumbnail(image_id):
         return "Server error", 500
     finally:
         session.close()
+
+
+# Authentication routes
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page and handler."""
+    if request.method == 'POST':
+        ip = request.remote_addr
+        if not check_rate_limit(ip):
+            return render_template('login.html', error='Too many login attempts. Please wait.')
+
+        username = request.form.get('username', '')
+        password = request.form.get('password', '')
+
+        session = Session()
+        try:
+            from home_media_ai.media import User
+            user = session.query(User).filter(
+                User.username == username,
+                User.is_active == True
+            ).first()
+
+            if user and user.check_password(password):
+                # Update last login
+                user.last_login = datetime.now()
+                session.commit()
+
+                flask_session.permanent = True
+                flask_session['authenticated'] = True
+                flask_session['user_id'] = user.id
+                flask_session['username'] = user.username
+                flask_session['display_name'] = user.display_name or user.username
+                record_login_attempt(ip, True)
+                return redirect(url_for('rating_select'))
+            else:
+                record_login_attempt(ip, False)
+                return render_template('login.html', error='Invalid username or password')
+        finally:
+            session.close()
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """Logout handler."""
+    flask_session.clear()
+    return redirect(url_for('login'))
+
+
+# Rating workflow endpoints
+
+@app.route('/api/rating/<int:image_id>', methods=['PATCH'])
+@login_required
+def update_rating(image_id):
+    """Update the rating for an image and sync to file metadata."""
+    session = Session()
+
+    try:
+        data = request.get_json()
+        if not data or 'rating' not in data:
+            return jsonify({'error': 'Rating value required'}), 400
+
+        rating = int(data['rating'])
+        if not 0 <= rating <= 5:
+            return jsonify({'error': 'Rating must be between 0 and 5'}), 400
+
+        # Get media object
+        from home_media_ai.media import Media
+        media = session.query(Media).filter(Media.id == image_id).first()
+
+        if not media:
+            return jsonify({'error': 'Image not found'}), 404
+
+        # Sync rating to database and file
+        from home_media_ai.rating_sync import sync_rating_to_file
+        success = sync_rating_to_file(media, rating, session)
+
+        return jsonify({
+            'id': image_id,
+            'rating': rating,
+            'synced_to_file': success
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating rating: {e}")
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/years-months')
+def get_years_months():
+    """Get available year/month combinations with rating progress."""
+    session = Session()
+
+    try:
+        result = session.execute(text("""
+            SELECT
+                YEAR(created) as year,
+                MONTH(created) as month,
+                COUNT(*) as total,
+                SUM(CASE WHEN rating IS NOT NULL AND rating > 0 THEN 1 ELSE 0 END) as rated
+            FROM media
+            WHERE is_original = TRUE
+              AND created IS NOT NULL
+            GROUP BY YEAR(created), MONTH(created)
+            ORDER BY year DESC, month DESC
+        """))
+
+        items = []
+        for row in result:
+            items.append({
+                'year': row[0],
+                'month': row[1],
+                'total': row[2],
+                'rated': row[3],
+                'progress': round(row[3] / row[2] * 100, 1) if row[2] > 0 else 0
+            })
+
+        return jsonify({'items': items})
+
+    except Exception as e:
+        logger.error(f"Error fetching years/months: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/rating-queue')
+@login_required
+def get_rating_queue():
+    """
+    Get images for rating workflow with burst detection.
+
+    Query parameters:
+    - year: Filter by year (required)
+    - month: Filter by month (required)
+    - burst_window: Seconds to consider as burst (default 30)
+    - start_from: Image ID to start from (for pagination)
+    - limit: Number of images to return (default 50)
+    """
+    session = Session()
+
+    try:
+        year = request.args.get('year')
+        month = request.args.get('month')
+
+        if not year or not month:
+            return jsonify({'error': 'Year and month are required'}), 400
+
+        year = int(year)
+        month = int(month)
+        burst_window = int(request.args.get('burst_window', 30))
+        start_from = request.args.get('start_from')
+        limit = min(200, max(1, int(request.args.get('limit', 50))))
+
+        # Build query
+        where_clauses = [
+            "m.is_original = TRUE",
+            "YEAR(m.created) = :year",
+            "MONTH(m.created) = :month"
+        ]
+        params = {'year': year, 'month': month, 'limit': limit}
+
+        if start_from:
+            where_clauses.append("m.id > :start_from")
+            params['start_from'] = int(start_from)
+
+        where_sql = " AND ".join(where_clauses)
+
+        query_sql = f"""
+            SELECT
+                m.id,
+                m.storage_root,
+                m.directory,
+                m.filename,
+                m.created,
+                m.rating,
+                m.width,
+                m.height,
+                m.camera_make,
+                m.camera_model,
+                m.thumbnail_path
+            FROM media m
+            WHERE {where_sql}
+            ORDER BY m.created ASC, m.id ASC
+            LIMIT :limit
+        """
+
+        result = session.execute(text(query_sql), params)
+
+        images = []
+        for row in result.mappings():
+            images.append({
+                'id': row['id'],
+                'storage_root': row['storage_root'],
+                'directory': row['directory'],
+                'filename': row['filename'],
+                'created': row['created'].isoformat() if row['created'] else None,
+                'rating': row['rating'],
+                'width': row['width'],
+                'height': row['height'],
+                'camera_make': row['camera_make'],
+                'camera_model': row['camera_model'],
+                'thumbnail_path': row['thumbnail_path']
+            })
+
+        # Detect bursts
+        bursts = []
+        if len(images) > 1:
+            current_burst = [images[0]]
+            for i in range(1, len(images)):
+                prev_time = datetime.fromisoformat(images[i-1]['created']) if images[i-1]['created'] else None
+                curr_time = datetime.fromisoformat(images[i]['created']) if images[i]['created'] else None
+
+                if prev_time and curr_time:
+                    diff = abs((curr_time - prev_time).total_seconds())
+                    if diff <= burst_window:
+                        current_burst.append(images[i])
+                    else:
+                        if len(current_burst) > 1:
+                            bursts.append([img['id'] for img in current_burst])
+                        current_burst = [images[i]]
+                else:
+                    if len(current_burst) > 1:
+                        bursts.append([img['id'] for img in current_burst])
+                    current_burst = [images[i]]
+
+            # Don't forget the last burst
+            if len(current_burst) > 1:
+                bursts.append([img['id'] for img in current_burst])
+
+        return jsonify({
+            'images': images,
+            'bursts': bursts,
+            'year': year,
+            'month': month,
+            'burst_window': burst_window
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching rating queue: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/cached-thumbnail/<int:image_id>')
+def get_cached_thumbnail(image_id):
+    """Serve cached thumbnail if available, otherwise generate on-the-fly."""
+    session = Session()
+
+    try:
+        # Check for cached thumbnail
+        result = session.execute(
+            text("""
+                SELECT storage_root, directory, filename, thumbnail_path
+                FROM media
+                WHERE id = :id
+            """),
+            {'id': image_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return "Not found", 404
+
+        storage_root, directory, filename, thumbnail_path = row
+
+        # If cached thumbnail exists, serve it
+        if thumbnail_path:
+            thumb_full_path = resolve_media_path(storage_root, thumbnail_path, "")
+            if Path(thumb_full_path).exists():
+                return send_file(thumb_full_path, mimetype='image/jpeg')
+
+        # Fall back to on-the-fly generation
+        return get_thumbnail(image_id)
+
+    except Exception as e:
+        logger.error(f"Error fetching cached thumbnail {image_id}: {e}")
+        return "Server error", 500
+    finally:
+        session.close()
+
+
+@app.route('/rate')
+@login_required
+def rating_select():
+    """Rating workflow - year/month selection page."""
+    return render_template('rating_select.html')
+
+
+@app.route('/rate/<int:year>/<int:month>')
+@login_required
+def rating_view(year, month):
+    """Rating workflow - main rating interface."""
+    return render_template('rating.html', year=year, month=month)
 
 
 if __name__ == '__main__':
