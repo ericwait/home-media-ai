@@ -2,13 +2,19 @@
 """Generate thumbnails for existing media files in the database.
 
 Usage:
-    python generate_thumbnails.py [--limit N] [--check-integrity] [--workers N] [--sequential]
+    python generate_thumbnails.py [--limit N] [--check-integrity] [--workers N] [--sequential] [--commit-interval N]
 
 Options:
-    --limit N           Only generate N thumbnails (useful for testing)
-    --check-integrity   Check existing thumbnails and regenerate missing ones
-    --workers N         Number of parallel workers (default: CPU count)
-    --sequential        Use sequential processing instead of parallel
+    --limit N            Only generate N thumbnails (useful for testing)
+    --check-integrity    Check existing thumbnails and regenerate missing ones
+    --workers N          Number of parallel workers (default: 4)
+    --sequential         Use sequential processing (RECOMMENDED for remote databases on Windows)
+    --commit-interval N  Commit database changes every N items in sequential mode (default: 100)
+
+Notes:
+    - For remote databases on Windows, use --sequential to avoid port exhaustion
+    - Parallel mode works best with local databases or Linux systems
+    - Use --workers 2 for remote databases if you need parallel processing
 """
 
 import argparse
@@ -34,10 +40,12 @@ def main():
                         help='Maximum number of thumbnails to generate')
     parser.add_argument('--check-integrity', action='store_true',
                         help='Check existing thumbnails and regenerate missing ones')
-    parser.add_argument('--workers', type=int, default=None,
-                        help='Number of parallel workers (default: CPU count)')
+    parser.add_argument('--workers', type=int, default=4,
+                        help='Number of parallel workers (default: 4, recommended for remote databases)')
     parser.add_argument('--sequential', action='store_true',
                         help='Use sequential processing instead of parallel')
+    parser.add_argument('--commit-interval', type=int, default=100,
+                        help='Commit database changes every N items (default: 100)')
     args = parser.parse_args()
 
     # Load config
@@ -56,7 +64,11 @@ def main():
         if args.check_integrity:
             if args.sequential:
                 print("Checking thumbnail integrity (sequential)...")
-                valid, missing, regenerated = check_thumbnail_integrity(session, regenerate=True)
+                valid, missing, regenerated = check_thumbnail_integrity(
+                    session,
+                    regenerate=True,
+                    commit_interval=args.commit_interval
+                )
             else:
                 print("Checking thumbnail integrity (parallel)...")
                 valid, missing, regenerated = check_thumbnail_integrity_parallel(

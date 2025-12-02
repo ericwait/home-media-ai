@@ -33,7 +33,8 @@ def generate_thumbnail(
     quality: int = DEFAULT_QUALITY,
     suffix: str = DEFAULT_SUFFIX,
     normalize_histogram: bool = True,
-    use_local_mapping: bool = True
+    use_local_mapping: bool = True,
+    commit: bool = True
 ) -> Optional[str]:
     """Generate a thumbnail for a media item with optional histogram normalization.
 
@@ -49,6 +50,7 @@ def generate_thumbnail(
         suffix: Suffix to append to filename (e.g., "_thumb").
         normalize_histogram: Apply histogram equalization for uniform appearance.
         use_local_mapping: Use local path mapping from config.
+        commit: Whether to commit the session after updating (default True).
 
     Returns:
         Relative path to generated thumbnail, or None if generation failed.
@@ -101,14 +103,16 @@ def generate_thumbnail(
 
         # Update database
         media.thumbnail_path = relative_path
-        session.commit()
+        if commit:
+            session.commit()
 
         logger.info(f"Generated thumbnail: {thumb_path}")
         return relative_path
 
     except Exception as e:
         logger.error(f"Failed to generate thumbnail for media {media.id}: {e}")
-        session.rollback()
+        if commit:
+            session.rollback()
         return None
 
 
@@ -228,36 +232,60 @@ def _generate_thumbnail_worker(args: tuple) -> tuple[int, bool]:
     """
     media_id, database_uri, settings = args
 
-    try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
+    max_retries = 3
+    retry_delay = 1  # seconds
 
-        engine = create_engine(database_uri)
-        Session = sessionmaker(bind=engine)
-        session = Session()
-
+    for attempt in range(max_retries):
         try:
-            media = session.query(Media).filter(Media.id == media_id).first()
-            if not media:
-                return media_id, False
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            from sqlalchemy.exc import OperationalError
+            import time
 
-            result = generate_thumbnail(
-                media=media,
-                session=session,
-                max_dimension=settings['max_dimension'],
-                quality=settings['quality'],
-                suffix=settings['suffix'],
-                normalize_histogram=settings['normalize_histogram'],
-                use_local_mapping=settings['use_local_mapping']
+            # Conservative connection pool settings to avoid port exhaustion
+            engine = create_engine(
+                database_uri,
+                pool_pre_ping=True,
+                pool_recycle=300,
+                pool_size=2,
+                max_overflow=0,
+                pool_timeout=30
             )
-            return media_id, result is not None
-        finally:
-            session.close()
-            engine.dispose()
+            Session = sessionmaker(bind=engine)
+            session = Session()
 
-    except Exception as e:
-        logger.error(f"Worker error for media {media_id}: {e}")
-        return media_id, False
+            try:
+                media = session.query(Media).filter(Media.id == media_id).first()
+                if not media:
+                    return media_id, False
+
+                result = generate_thumbnail(
+                    media=media,
+                    session=session,
+                    max_dimension=settings['max_dimension'],
+                    quality=settings['quality'],
+                    suffix=settings['suffix'],
+                    normalize_histogram=settings['normalize_histogram'],
+                    use_local_mapping=settings['use_local_mapping']
+                )
+                return media_id, result is not None
+            finally:
+                session.close()
+                engine.dispose()
+
+        except OperationalError as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Connection error for media {media_id} (attempt {attempt + 1}/{max_retries}): {e}")
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            else:
+                logger.error(f"Failed to process media {media_id} after {max_retries} attempts: {e}")
+                return media_id, False
+        except Exception as e:
+            logger.error(f"Worker error for media {media_id}: {e}")
+            return media_id, False
+
+    return media_id, False
 
 
 def generate_missing_thumbnails_parallel(
@@ -324,8 +352,19 @@ def generate_missing_thumbnails_parallel(
 
     logger.info(f"Generating {len(media_ids)} thumbnails with {workers} workers")
 
+    # Submit tasks in batches to avoid overwhelming connection pool
+    batch_size = workers * 10  # Keep queue reasonable
+    import time
+
     with ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_generate_thumbnail_worker, args): args[0] for args in worker_args}
+        futures = {}
+        submitted = 0
+
+        # Submit initial batch
+        for args in worker_args[:batch_size]:
+            future = executor.submit(_generate_thumbnail_worker, args)
+            futures[future] = args[0]
+            submitted += 1
 
         for future in as_completed(futures):
             media_id = futures[future]
@@ -338,6 +377,17 @@ def generate_missing_thumbnails_parallel(
             except Exception as e:
                 logger.error(f"Future error for media {media_id}: {e}")
                 failed += 1
+
+            # Submit next task if available
+            if submitted < len(worker_args):
+                args = worker_args[submitted]
+                new_future = executor.submit(_generate_thumbnail_worker, args)
+                futures[new_future] = args[0]
+                submitted += 1
+
+                # Small delay every N submissions to reduce port churn on Windows
+                if submitted % (workers * 2) == 0:
+                    time.sleep(0.1)
 
             # Progress logging
             total_done = successful + failed
@@ -359,52 +409,77 @@ def _check_thumbnail_worker(args: tuple) -> tuple[int, bool, bool]:
     """
     media_id, database_uri, use_local_mapping, regenerate = args
 
-    try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-        from .config import get_path_resolver
+    max_retries = 3
+    retry_delay = 1  # seconds
 
-        engine = create_engine(database_uri, pool_pre_ping=True, pool_recycle=300)
-        Session = sessionmaker(bind=engine)
-        session = Session()
-        resolver = get_path_resolver()
-
+    for attempt in range(max_retries):
         try:
-            media = session.query(Media).filter(Media.id == media_id).first()
-            if not media or not media.thumbnail_path:
-                return media_id, False, False
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            from sqlalchemy.exc import OperationalError
+            from .config import get_path_resolver
+            import time
 
-            thumb_path = resolver.resolve_path(
-                media.storage_root,
-                media.thumbnail_path,
-                ""
+            # More conservative connection pool settings to avoid port exhaustion
+            engine = create_engine(
+                database_uri,
+                pool_pre_ping=True,
+                pool_recycle=300,
+                pool_size=2,  # Smaller pool per worker
+                max_overflow=0,  # No overflow connections
+                pool_timeout=30
             )
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            resolver = get_path_resolver()
 
-            if thumb_path.exists():
-                return media_id, True, False
+            try:
+                media = session.query(Media).filter(Media.id == media_id).first()
+                if not media or not media.thumbnail_path:
+                    return media_id, False, False
+
+                thumb_path = resolver.resolve_path(
+                    media.storage_root,
+                    media.thumbnail_path,
+                    ""
+                )
+
+                if thumb_path.exists():
+                    return media_id, True, False
+                else:
+                    if regenerate:
+                        media.thumbnail_path = None
+                        result = generate_thumbnail(
+                            media=media,
+                            session=session,
+                            use_local_mapping=use_local_mapping
+                        )
+                        return media_id, False, result is not None
+                    return media_id, False, False
+            finally:
+                session.close()
+                engine.dispose()
+
+        except OperationalError as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Connection error for media {media_id} (attempt {attempt + 1}/{max_retries}): {e}")
+                time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                continue
             else:
-                if regenerate:
-                    media.thumbnail_path = None
-                    result = generate_thumbnail(
-                        media=media,
-                        session=session,
-                        use_local_mapping=use_local_mapping
-                    )
-                    return media_id, False, result is not None
+                logger.error(f"Failed to process media {media_id} after {max_retries} attempts: {e}")
                 return media_id, False, False
-        finally:
-            session.close()
-            engine.dispose()
+        except Exception as e:
+            logger.error(f"Worker error checking thumbnail for media {media_id}: {e}")
+            return media_id, False, False
 
-    except Exception as e:
-        logger.error(f"Worker error checking thumbnail for media {media_id}: {e}")
-        return media_id, False, False
+    return media_id, False, False
 
 
 def check_thumbnail_integrity(
     session: Session,
     regenerate: bool = True,
-    use_local_mapping: bool = True
+    use_local_mapping: bool = True,
+    commit_interval: int = 100
 ) -> tuple[int, int, int]:
     """Check that all thumbnail files exist and optionally regenerate missing ones.
 
@@ -412,11 +487,13 @@ def check_thumbnail_integrity(
         session: Database session.
         regenerate: If True, regenerate missing thumbnails.
         use_local_mapping: Use local path mapping from config.
+        commit_interval: Commit changes every N items to avoid long transactions.
 
     Returns:
         Tuple of (valid_count, missing_count, regenerated_count).
     """
     from .config import get_path_resolver
+    from sqlalchemy.exc import OperationalError, InterfaceError
 
     resolver = get_path_resolver()
 
@@ -428,6 +505,7 @@ def check_thumbnail_integrity(
     valid = 0
     missing = 0
     regenerated = 0
+    processed = 0
 
     for media in media_items:
         # Resolve thumbnail path
@@ -447,12 +525,37 @@ def check_thumbnail_integrity(
                 result = generate_thumbnail(
                     media=media,
                     session=session,
-                    use_local_mapping=use_local_mapping
+                    use_local_mapping=use_local_mapping,
+                    commit=False  # Let check_thumbnail_integrity handle commits
                 )
                 if result:
                     regenerated += 1
 
-    session.commit()
+        processed += 1
+
+        # Commit periodically to avoid long transactions and connection timeouts
+        if processed % commit_interval == 0:
+            try:
+                session.commit()
+                logger.info(f"Progress: {processed}/{len(media_items)} ({valid} valid, {missing} missing, {regenerated} regenerated)")
+            except (OperationalError, InterfaceError) as e:
+                logger.error(f"Database error during commit at item {processed}: {e}")
+                session.rollback()
+                # Try to reconnect
+                try:
+                    session.commit()
+                except Exception as retry_error:
+                    logger.error(f"Retry failed: {retry_error}")
+                    raise
+
+    # Final commit for any remaining items
+    try:
+        session.commit()
+    except (OperationalError, InterfaceError) as e:
+        logger.error(f"Database error during final commit: {e}")
+        session.rollback()
+        raise
+
     logger.info(f"Thumbnail integrity check: {valid} valid, {missing} missing, {regenerated} regenerated")
     return valid, missing, regenerated
 
@@ -502,11 +605,19 @@ def check_thumbnail_integrity_parallel(
 
     logger.info(f"Checking {len(media_ids)} thumbnails with {workers} workers")
 
+    # Submit tasks in batches to avoid overwhelming connection pool
+    batch_size = workers * 10  # Keep queue reasonable
+    import time
+
     with ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(_check_thumbnail_worker, args): args[0]
-            for args in worker_args
-        }
+        futures = {}
+        submitted = 0
+
+        # Submit initial batch
+        for args in worker_args[:batch_size]:
+            future = executor.submit(_check_thumbnail_worker, args)
+            futures[future] = args[0]
+            submitted += 1
 
         for future in as_completed(futures):
             media_id = futures[future]
@@ -521,6 +632,17 @@ def check_thumbnail_integrity_parallel(
             except Exception as e:
                 logger.error(f"Future error for media {media_id}: {e}")
                 missing += 1
+
+            # Submit next task if available
+            if submitted < len(worker_args):
+                args = worker_args[submitted]
+                new_future = executor.submit(_check_thumbnail_worker, args)
+                futures[new_future] = args[0]
+                submitted += 1
+
+                # Small delay every N submissions to reduce port churn on Windows
+                if submitted % (workers * 2) == 0:
+                    time.sleep(0.1)
 
             # Progress logging
             total_done = valid + missing

@@ -48,7 +48,13 @@ def get_engine(config: Optional[Config] = None) -> Engine:
                 "or use HOME_MEDIA_AI_URI environment variable."
             )
 
-        _engine = create_engine(config.database.uri)
+        _engine = create_engine(
+            config.database.uri,
+            pool_pre_ping=True,  # Verify connections before using them
+            pool_recycle=3600,   # Recycle connections after 1 hour
+            pool_size=10,        # Connection pool size
+            max_overflow=20      # Allow up to 20 overflow connections
+        )
         _SessionFactory = sessionmaker(bind=_engine)
 
     return _engine
