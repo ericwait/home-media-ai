@@ -156,6 +156,8 @@ def get_images():
     - has_gps: Filter for images with GPS data (true/false)
     - camera_make: Filter by camera manufacturer
     - year: Filter by year
+    - month: Filter by month (1-12)
+    - unrated: Filter for unrated images only (true/false)
     - sort: Sort field (created, rating, camera_make)
     - order: Sort order (asc, desc)
     """
@@ -200,6 +202,14 @@ def get_images():
         if year := request.args.get('year'):
             where_clauses.append("YEAR(m.created) = :year")
             params['year'] = int(year)
+
+        if month := request.args.get('month'):
+            where_clauses.append("MONTH(m.created) = :month")
+            params['month'] = int(month)
+
+        # Unrated filter
+        if request.args.get('unrated') == 'true':
+            where_clauses.append("(m.rating IS NULL OR m.rating = 0)")
 
         where_sql = " AND ".join(where_clauses)
 
@@ -422,9 +432,18 @@ def get_filter_options():
             ORDER BY name
         """)).fetchall()
 
+        # Available months (1-12)
+        months = session.execute(text("""
+            SELECT DISTINCT MONTH(created) as month
+            FROM media
+            WHERE created IS NOT NULL
+            ORDER BY month
+        """)).fetchall()
+
         return jsonify({
             'cameras': [r[0] for r in cameras],
             'years': [r[0] for r in years],
+            'months': [r[0] for r in months],
             'media_types': [r[0] for r in media_types]
         })
 
@@ -502,6 +521,17 @@ def export_filtered():
             params['year'] = int(year)
             filter_info['year'] = int(year)
 
+        # Month filter
+        if month := request.args.get('month'):
+            where_clauses.append("MONTH(m.created) = :month")
+            params['month'] = int(month)
+            filter_info['month'] = int(month)
+
+        # Unrated filter
+        if request.args.get('unrated') == 'true':
+            where_clauses.append("(m.rating IS NULL OR m.rating = 0)")
+            filter_info['unrated'] = True
+
         where_sql = " AND ".join(where_clauses)
 
         # Export based on format
@@ -565,6 +595,12 @@ def export_filtered():
 def image_detail(image_id):
     """Render detailed view of a single image."""
     return render_template('image.html', image_id=image_id)
+
+
+@app.route('/view/<int:image_id>')
+def view_image(image_id):
+    """View a single image with EXIF overlay and rating capability."""
+    return render_template('viewer.html', image_id=image_id)
 
 @app.route('/api/thumbnail/<int:image_id>')
 def get_thumbnail(image_id):
@@ -801,6 +837,7 @@ def get_rating_queue():
     - burst_window: Seconds to consider as burst (default 30)
     - start_from: Image ID to start from (for pagination)
     - limit: Number of images to return (default 50)
+    - unrated_only: Only return unrated images (default false)
     """
     session = Session()
 
@@ -824,6 +861,11 @@ def get_rating_queue():
             "MONTH(m.created) = :month"
         ]
         params = {'year': year, 'month': month, 'limit': limit}
+
+        # Unrated only filter
+        unrated_only = request.args.get('unrated_only') == 'true'
+        if unrated_only:
+            where_clauses.append("(m.rating IS NULL OR m.rating = 0)")
 
         if start_from:
             where_clauses.append("m.id > :start_from")

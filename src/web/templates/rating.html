@@ -246,6 +246,10 @@
             <input type="checkbox" id="autoAdvance" onchange="saveSettings()">
             Auto-advance after rating
         </label>
+        <label style="margin-left: 2rem;">
+            <input type="checkbox" id="unratedOnly" onchange="saveSettings(); loadImages();">
+            Only show unrated
+        </label>
     </div>
 
     <div class="main-view">
@@ -282,16 +286,21 @@ let currentIndex = 0;
 let inBurstView = false;
 let selectedBurstIndex = 0;
 let autoAdvance = false;
+let unratedOnly = false;
 
 // Load settings
 function loadSettings() {
     autoAdvance = localStorage.getItem('ratingAutoAdvance') === 'true';
     document.getElementById('autoAdvance').checked = autoAdvance;
+    unratedOnly = localStorage.getItem('ratingUnratedOnly') === 'true';
+    document.getElementById('unratedOnly').checked = unratedOnly;
 }
 
 function saveSettings() {
     autoAdvance = document.getElementById('autoAdvance').checked;
     localStorage.setItem('ratingAutoAdvance', autoAdvance);
+    unratedOnly = document.getElementById('unratedOnly').checked;
+    localStorage.setItem('ratingUnratedOnly', unratedOnly);
 }
 
 function toggleSettings() {
@@ -307,7 +316,11 @@ function renderStars(rating) {
 // Load images for the month
 async function loadImages() {
     try {
-        const response = await fetch(`/api/rating-queue?year=${YEAR}&month=${MONTH}&burst_window=${BURST_WINDOW}&limit=200`);
+        let url = `/api/rating-queue?year=${YEAR}&month=${MONTH}&burst_window=${BURST_WINDOW}&limit=200`;
+        if (unratedOnly) {
+            url += '&unrated_only=true';
+        }
+        const response = await fetch(url);
         const data = await response.json();
 
         if (data.error) {

@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}View Image - Home Media AI{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        overflow: hidden;
+    }
+    .viewer-container {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .viewer-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+    .exif-overlay {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.85);
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 1rem;
+        min-width: 280px;
+        max-width: 350px;
+        font-size: 0.85rem;
+        z-index: 100;
+        transition: opacity 0.2s;
+    }
+    .exif-overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+    .exif-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #333;
+    }
+    .exif-header h3 {
+        color: #4a9eff;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+    .exif-toggle {
+        background: transparent;
+        border: none;
+        color: #999;
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    .exif-toggle:hover {
+        color: #e0e0e0;
+    }
+    .exif-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid #222;
+    }
+    .exif-row:last-child {
+        border-bottom: none;
+    }
+    .exif-label {
+        color: #999;
+    }
+    .exif-value {
+        color: #e0e0e0;
+        text-align: right;
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .rating-overlay {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.85);
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 1rem 2rem;
+        z-index: 100;
+        text-align: center;
+    }
+    .rating-stars {
+        font-size: 2rem;
+        color: #ffd700;
+        margin-bottom: 0.5rem;
+    }
+    .rating-hint {
+        font-size: 0.8rem;
+        color: #666;
+    }
+    .toggle-btn {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.7);
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 0.5rem 1rem;
+        color: #999;
+        cursor: pointer;
+        z-index: 101;
+    }
+    .toggle-btn:hover {
+        color: #e0e0e0;
+        background: rgba(0, 0, 0, 0.9);
+    }
+    .toggle-btn.hidden-state {
+        display: block;
+    }
+    .toggle-btn.visible-state {
+        display: none;
+    }
+    .exif-overlay:not(.hidden) + .toggle-btn.hidden-state {
+        display: none;
+    }
+    .exif-overlay.hidden + .toggle-btn.hidden-state {
+        display: block;
+    }
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+        color: #999;
+        font-size: 1.2rem;
+    }
+    .error-message {
+        color: #ff6b6b;
+        text-align: center;
+        padding: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="viewer-container" id="viewerContainer">
+    <img class="viewer-image" id="viewerImage" src="" alt="">
+</div>
+
+<div class="exif-overlay" id="exifOverlay">
+    <div class="exif-header">
+        <h3>Image Info</h3>
+        <button class="exif-toggle" onclick="toggleExif()">Hide</button>
+    </div>
+    <div id="exifContent">Loading...</div>
+</div>
+
+<button class="toggle-btn hidden-state" id="showExifBtn" onclick="toggleExif()">Show Info</button>
+
+<div class="rating-overlay" id="ratingOverlay">
+    <div class="rating-stars" id="ratingStars">Loading...</div>
+    <div class="rating-hint">Press 0-5 to rate</div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">Loading image...</div>
+{% endblock %}
+
+{% block extra_js %}
+const IMAGE_ID = {{ image_id }};
+let imageData = null;
+let exifVisible = true;
+
+async function loadImageData() {
+    try {
+        const response = await fetch(`/api/image/${IMAGE_ID}`);
+        if (!response.ok) {
+            throw new Error('Image not found');
+        }
+        imageData = await response.json();
+
+        // Load the image
+        const img = document.getElementById('viewerImage');
+        img.onload = () => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        };
+        img.onerror = () => {
+            document.getElementById('loadingOverlay').innerHTML = '<div class="error-message">Failed to load image</div>';
+        };
+        img.src = `/api/cached-thumbnail/${IMAGE_ID}`;
+
+        // Render EXIF data
+        renderExif();
+
+        // Render rating
+        renderRating();
+
+    } catch (error) {
+        document.getElementById('loadingOverlay').innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
+    }
+}
+
+function renderExif() {
+    const content = document.getElementById('exifContent');
+    const rows = [];
+
+    // Camera
+    if (imageData.camera_make || imageData.camera_model) {
+        const camera = [imageData.camera_make, imageData.camera_model].filter(Boolean).join(' ');
+        rows.push({ label: 'Camera', value: camera });
+    }
+
+    // Lens
+    if (imageData.lens_model) {
+        rows.push({ label: 'Lens', value: imageData.lens_model });
+    }
+
+    // Parse EXIF data for exposure settings
+    const exif = imageData.exif_data || {};
+
+    // Aperture
+    if (exif.aperture || exif.FNumber) {
+        const aperture = exif.aperture || exif.FNumber;
+        rows.push({ label: 'Aperture', value: `f/${aperture}` });
+    }
+
+    // Shutter speed
+    if (exif.shutter_speed || exif.ExposureTime) {
+        rows.push({ label: 'Shutter', value: exif.shutter_speed || exif.ExposureTime });
+    }
+
+    // ISO
+    if (exif.iso || exif.ISOSpeedRatings) {
+        rows.push({ label: 'ISO', value: exif.iso || exif.ISOSpeedRatings });
+    }
+
+    // Focal length
+    if (exif.focal_length || exif.FocalLength) {
+        const fl = exif.focal_length || exif.FocalLength;
+        rows.push({ label: 'Focal Length', value: `${fl}mm` });
+    }
+
+    // Date
+    if (imageData.created) {
+        const date = new Date(imageData.created);
+        rows.push({ label: 'Date', value: date.toLocaleString() });
+    }
+
+    // Dimensions
+    if (imageData.width && imageData.height) {
+        rows.push({ label: 'Dimensions', value: `${imageData.width} x ${imageData.height}` });
+    }
+
+    // GPS
+    if (imageData.gps_latitude && imageData.gps_longitude) {
+        const lat = parseFloat(imageData.gps_latitude).toFixed(6);
+        const lng = parseFloat(imageData.gps_longitude).toFixed(6);
+        rows.push({ label: 'GPS', value: `${lat}, ${lng}` });
+    }
+
+    // Filename
+    if (imageData.filename) {
+        rows.push({ label: 'Filename', value: imageData.filename });
+    }
+
+    if (rows.length === 0) {
+        content.innerHTML = '<div style="color: #666">No EXIF data available</div>';
+        return;
+    }
+
+    content.innerHTML = rows.map(row => `
+        <div class="exif-row">
+            <span class="exif-label">${row.label}</span>
+            <span class="exif-value" title="${row.value}">${row.value}</span>
+        </div>
+    `).join('');
+}
+
+function renderRating() {
+    const rating = imageData.rating || 0;
+    const stars = rating > 0
+        ? '★'.repeat(rating) + '☆'.repeat(5 - rating)
+        : '<span style="color: #666">Not rated</span>';
+    document.getElementById('ratingStars').innerHTML = stars;
+}
+
+function toggleExif() {
+    const overlay = document.getElementById('exifOverlay');
+    const showBtn = document.getElementById('showExifBtn');
+    exifVisible = !exifVisible;
+
+    if (exifVisible) {
+        overlay.classList.remove('hidden');
+        showBtn.style.display = 'none';
+    } else {
+        overlay.classList.add('hidden');
+        showBtn.style.display = 'block';
+    }
+}
+
+async function setRating(rating) {
+    try {
+        const response = await fetch(`/api/rating/${IMAGE_ID}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rating })
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            alert('Error setting rating: ' + (data.error || 'Unknown error'));
+            return;
+        }
+
+        imageData.rating = rating;
+        renderRating();
+
+    } catch (error) {
+        alert('Error setting rating: ' + error.message);
+    }
+}
+
+// Keyboard handler
+document.addEventListener('keydown', (e) => {
+    // Number keys 0-5 for rating
+    if (e.key >= '0' && e.key <= '5') {
+        e.preventDefault();
+        setRating(parseInt(e.key));
+        return;
+    }
+
+    // 'i' to toggle info overlay
+    if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        toggleExif();
+        return;
+    }
+
+    // Escape to close the tab (optional)
+    if (e.key === 'Escape') {
+        window.close();
+    }
+});
+
+// Initialize
+loadImageData();
+{% endblock %}
