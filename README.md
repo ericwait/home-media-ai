@@ -1,5 +1,8 @@
 # 🏠 Home Media AI
 
+> **⚠️ Vibe Coding Experiment**
+> This project is built almost entirely through AI-assisted development (Claude prompts). I'm exploring the limits of taking a project from initial concept to real-world "production" use by my family (non-programmers) using primarily natural language direction rather than traditional coding. Consider this both a functional tool and an experiment in AI-powered software development.
+
 A flexible system for organizing, classifying, and exploring personal media collections using hierarchical classification systems.
 This project combines authoritative classification data with personal media collections to build a reproducible, auditable knowledge base.
 
