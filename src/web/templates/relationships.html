@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block title %}Image Relationships - Home Media AI{% endblock %}
+
+{% block extra_css %}
+<style>
+    .container {
+        max-width: 100%;
+        padding: 1rem;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #1a1a1a;
+        border-radius: 8px;
+    }
+
+    .stats {
+        display: flex;
+        gap: 2rem;
+        font-size: 0.9rem;
+        color: #999;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        color: #4a9eff;
+        font-weight: bold;
+    }
+
+    #graph-container {
+        width: 100%;
+        height: calc(100vh - 150px);
+        background: #0a0a0a;
+        border-radius: 8px;
+        border: 1px solid #333;
+        position: relative;
+    }
+
+    .legend {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: rgba(26, 26, 26, 0.9);
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #333;
+        font-size: 0.85rem;
+        z-index: 10;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 2px solid #333;
+    }
+
+    .tooltip {
+        position: absolute;
+        padding: 0.5rem;
+        background: rgba(0, 0, 0, 0.9);
+        border: 1px solid #333;
+        border-radius: 4px;
+        pointer-events: none;
+        display: none;
+        z-index: 100;
+        font-size: 0.85rem;
+    }
+
+    .loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #999;
+        font-size: 1.2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <div>
+            <h2>Image Relationships</h2>
+            <p style="color: #999; margin: 0.5rem 0 0 0; font-size: 0.9rem;">Visualize parent-child relationships between original and edited images</p>
+        </div>
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-value" id="total-chains">-</span>
+                <span>Chains</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="total-originals">-</span>
+                <span>Originals</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="total-derivatives">-</span>
+                <span>Derivatives</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="graph-container">
+        <div class="loading" id="loading">Loading relationship data...</div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4a9eff;"></div>
+                <span>Original (no parent)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff9f4a;"></div>
+                <span>Derivative (edited)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4aff9f; border: 3px solid #4aff9f;"></div>
+                <span>Final (no children)</span>
+            </div>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #333;">
+                <div>💡 Click nodes to view details</div>
+                <div>📷 Drag to pan, scroll to zoom</div>
+            </div>
+        </div>
+
+        <div class="tooltip" id="tooltip"></div>
+        <svg id="graph" width="100%" height="100%"></svg>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const width = document.getElementById('graph-container').clientWidth;
+const height = document.getElementById('graph-container').clientHeight;
+
+let data = { nodes: [], edges: [] };
+let simulation;
+
+// Create SVG
+const svg = d3.select('#graph');
+const g = svg.append('g');
+
+// Add zoom behavior
+const zoom = d3.zoom()
+    .scaleExtent([0.1, 10])
+    .on('zoom', (event) => {
+        g.attr('transform', event.transform);
+    });
+
+svg.call(zoom);
+
+// Load data
+async function loadData() {
+    try {
+        const response = await fetch('/api/relationships');
+        data = await response.json();
+
+        if (data.error) {
+            alert('Error loading relationships: ' + data.error);
+            return;
+        }
+
+        document.getElementById('loading').style.display = 'none';
+
+        // Update stats
+        const originals = data.nodes.filter(n => n.is_original).length;
+        const derivatives = data.nodes.filter(n => !n.is_original).length;
+        const chains = data.nodes.filter(n => n.is_original && !n.is_final).length;
+
+        document.getElementById('total-chains').textContent = chains;
+        document.getElementById('total-originals').textContent = originals;
+        document.getElementById('total-derivatives').textContent = derivatives;
+
+        renderGraph();
+    } catch (error) {
+        console.error('Error loading data:', error);
+        document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
+    }
+}
+
+function renderGraph() {
+    // Create links
+    const link = g.append('g')
+        .selectAll('line')
+        .data(data.edges)
+        .join('line')
+        .attr('stroke', '#666')
+        .attr('stroke-width', 2)
+        .attr('marker-end', 'url(#arrowhead)');
+
+    // Add arrowhead marker
+    svg.append('defs').append('marker')
+        .attr('id', 'arrowhead')
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 20)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#666');
+
+    // Create nodes
+    const node = g.append('g')
+        .selectAll('circle')
+        .data(data.nodes)
+        .join('circle')
+        .attr('r', d => d.is_final ? 12 : 10)
+        .attr('fill', d => d.is_original ? '#4a9eff' : '#ff9f4a')
+        .attr('stroke', d => d.is_final ? '#4aff9f' : '#333')
+        .attr('stroke-width', d => d.is_final ? 3 : 2)
+        .style('cursor', 'pointer')
+        .call(drag(simulation));
+
+    // Add labels
+    const label = g.append('g')
+        .selectAll('text')
+        .data(data.nodes)
+        .join('text')
+        .text(d => d.filename.length > 20 ? d.filename.substring(0, 17) + '...' : d.filename)
+        .attr('font-size', 10)
+        .attr('dx', 15)
+        .attr('dy', 4)
+        .attr('fill', '#999');
+
+    // Tooltip
+    const tooltip = d3.select('#tooltip');
+
+    node.on('mouseover', (event, d) => {
+        tooltip.style('display', 'block')
+            .html(`
+                <strong>${d.filename}</strong><br>
+                Type: ${d.is_original ? '📷 Original' : '✏️ Derivative'}<br>
+                Status: ${d.is_final ? '✅ Final' : '⏭️ Has children'}<br>
+                Rating: ${d.rating ? '★'.repeat(d.rating) : 'Unrated'}<br>
+                Created: ${d.created ? new Date(d.created).toLocaleDateString() : 'Unknown'}
+            `)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY + 10) + 'px');
+    })
+    .on('mouseout', () => {
+        tooltip.style('display', 'none');
+    })
+    .on('click', (event, d) => {
+        window.open(`/viewer/${d.id}`, '_blank');
+    });
+
+    // Create force simulation
+    simulation = d3.forceSimulation(data.nodes)
+        .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(30));
+
+    simulation.on('tick', () => {
+        link
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+
+        node
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y);
+
+        label
+            .attr('x', d => d.x)
+            .attr('y', d => d.y);
+    });
+}
+
+function drag(simulation) {
+    function dragstarted(event) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+    }
+
+    function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+    }
+
+    function dragended(event) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+    }
+
+    return d3.drag()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended);
+}
+
+// Initialize
+loadData();
+</script>
+{% endblock %}

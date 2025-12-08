@@ -375,7 +375,10 @@ function showImage(index) {
 
     // Update overlays
     document.getElementById('ratingOverlay').innerHTML = renderStars(img.rating);
-    document.getElementById('infoOverlay').textContent = `${img.filename} | ${img.created ? new Date(img.created).toLocaleString() : 'Unknown date'}`;
+
+    // Show image type badge
+    const typeLabel = img.is_original ? '📷 Original' : '✏️ Edited';
+    document.getElementById('infoOverlay').textContent = `${typeLabel} | ${img.filename} | ${img.created ? new Date(img.created).toLocaleString() : 'Unknown date'}`;
 
     // Update thumbnail selection
     const thumbs = document.querySelectorAll('.thumbnail-item');

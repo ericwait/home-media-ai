@@ -1,9 +1,17 @@
 -- =====================================================
 -- Media Management Tables
 -- =====================================================
--- Track images, videos, and their relationships.
--- RAW files are treated as originals; derivatives
--- reference their origin via origin_id.
+-- Track images, videos, and their relationships using
+-- a doubly-linked list structure (parent-child).
+--
+-- Three states:
+-- - Original: No parent (origin_id IS NULL)
+-- - Derivative: Has parent (origin_id IS NOT NULL)
+-- - Final: No children (no records reference via origin_id)
+--
+-- Note: "Original" refers to parentage, not file format.
+-- A JPEG with no parent is "Original" even though it's
+-- not a RAW camera file.
 -- =====================================================
 
 -- Define media type categories
@@ -40,8 +48,9 @@ CREATE TABLE IF NOT EXISTS media (
     file_ext VARCHAR(10),
     media_type_id INT NOT NULL,
     created DATETIME,
-    is_original BOOLEAN DEFAULT FALSE,
-    origin_id INT,
+    -- Parent-child relationship tracking (doubly-linked list)
+    is_original BOOLEAN DEFAULT FALSE,  -- TRUE if no parent (origin_id IS NULL)
+    origin_id INT,                      -- Parent image ID; NULL for originals
     metadata JSON NOT NULL DEFAULT '{}',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

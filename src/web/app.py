@@ -856,7 +856,7 @@ def get_rating_queue():
 
         # Build query
         where_clauses = [
-            "m.is_original = TRUE",
+            "m.is_final = TRUE",  # Show all final images (no children)
             "YEAR(m.created) = :year",
             "MONTH(m.created) = :month"
         ]
@@ -885,7 +885,10 @@ def get_rating_queue():
                 m.height,
                 m.camera_make,
                 m.camera_model,
-                m.thumbnail_path
+                m.thumbnail_path,
+                m.is_original,
+                m.is_final,
+                m.origin_id
             FROM media m
             WHERE {where_sql}
             ORDER BY m.created ASC, m.id ASC
@@ -907,7 +910,10 @@ def get_rating_queue():
                 'height': row['height'],
                 'camera_make': row['camera_make'],
                 'camera_model': row['camera_model'],
-                'thumbnail_path': row['thumbnail_path']
+                'thumbnail_path': row['thumbnail_path'],
+                'is_original': row['is_original'],
+                'is_final': row['is_final'],
+                'origin_id': row['origin_id']
             })
 
         # Detect bursts
@@ -1000,6 +1006,91 @@ def rating_select():
 def rating_view(year, month):
     """Rating workflow - main rating interface."""
     return render_template('rating.html', year=year, month=month)
+
+
+@app.route('/relationships')
+@login_required
+def relationships_view():
+    """Visualize parent-child relationships."""
+    return render_template('relationships.html')
+
+
+@app.route('/api/relationships')
+@login_required
+def api_relationships():
+    """Get parent-child relationship data for visualization."""
+    session = Session()
+    try:
+        # Get all images with parent-child relationships
+        query = text("""
+            SELECT
+                m.id,
+                m.filename,
+                m.is_original,
+                m.is_final,
+                m.origin_id,
+                m.created,
+                m.rating,
+                m.thumbnail_path
+            FROM media m
+            WHERE m.origin_id IS NOT NULL OR m.is_final = FALSE
+            ORDER BY m.created ASC
+        """)
+
+        result = session.execute(query)
+
+        nodes = []
+        edges = []
+        node_ids = set()
+
+        for row in result.mappings():
+            node_id = row['id']
+            parent_id = row['origin_id']
+
+            # Add current node
+            if node_id not in node_ids:
+                nodes.append({
+                    'id': node_id,
+                    'filename': row['filename'],
+                    'is_original': row['is_original'],
+                    'is_final': row['is_final'],
+                    'rating': row['rating'],
+                    'created': row['created'].isoformat() if row['created'] else None
+                })
+                node_ids.add(node_id)
+
+            # Add parent node if it exists and not already added
+            if parent_id and parent_id not in node_ids:
+                parent_query = text("SELECT id, filename, is_original, is_final, rating, created FROM media WHERE id = :id")
+                parent_result = session.execute(parent_query, {'id': parent_id}).mappings().first()
+                if parent_result:
+                    nodes.append({
+                        'id': parent_id,
+                        'filename': parent_result['filename'],
+                        'is_original': parent_result['is_original'],
+                        'is_final': parent_result['is_final'],
+                        'rating': parent_result['rating'],
+                        'created': parent_result['created'].isoformat() if parent_result['created'] else None
+                    })
+                    node_ids.add(parent_id)
+
+            # Add edge
+            if parent_id:
+                edges.append({
+                    'source': parent_id,
+                    'target': node_id
+                })
+
+        return jsonify({
+            'nodes': nodes,
+            'edges': edges
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching relationships: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
 
 
 if __name__ == '__main__':

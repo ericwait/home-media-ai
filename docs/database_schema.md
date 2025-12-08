@@ -74,8 +74,9 @@ Core table for tracking all media files on the NAS. Files should not move once e
 | `file_ext`     | VARCHAR(10)   | File extension |
 | `media_type_id`| INT FK        | References `media_types.id` |
 | `created`      | DATETIME      | Filesystem creation timestamp |
-| `is_original`  | BOOLEAN       | True if original file, false if derivative |
-| `origin_id`    | INT FK        | References `media.id` if derivative; NULL if original |
+| `is_original`  | BOOLEAN       | True if original (no parent), false if derivative |
+| `origin_id`    | INT FK        | Parent media ID; NULL for originals |
+| `is_final`     | BOOLEAN       | True if no children; maintained by triggers |
 | `metadata`     | JSON          | File‑specific data (EXIF, dimensions, codec, etc.) |
 | `created_at`   | DATETIME      | When record was created in database |
 | `updated_at`   | DATETIME      | Last metadata update |
@@ -95,6 +96,107 @@ Example: `/volume1/photos/2024/January/IMG_001.CR2`
 | `width`        | INT           | Image width in pixels |
 | `height`       | INT           | Image height in pixels |
 | `rating`       | INT           | Quality rating 0-5 stars |
+
+---
+
+## Image Lifecycle: Original, Derivative, and Final States
+
+The `media` table implements a parent-child relationship that tracks image processing workflows through a doubly-linked list structure. This allows the system to understand both the source of edited images and whether images have been further processed.
+
+### Three States
+
+1. **Original** - Images with no parent (`origin_id IS NULL`)
+   - Camera captures (JPEG, RAW formats, etc.)
+   - Scanned images
+   - Downloaded files
+   - **Note**: "Original" refers to parentage, not file format. A JPEG with no parent is "Original" even though it's not a RAW file type.
+
+2. **Derivative** - Images with a parent (`origin_id IS NOT NULL`)
+   - Edited/processed versions
+   - Crops, color corrections, format conversions
+   - Resized/optimized versions
+   - Links back to source via `origin_id`
+
+3. **Final** - Images with no children (no other records reference this via `origin_id`)
+   - End of processing chain
+   - No further edits have been created from this version
+   - Ready for export/sharing/rating
+
+### Valid State Combinations
+
+Images can exist in multiple states simultaneously:
+
+| State | Original | Derivative | Final | Example Use Case |
+|-------|----------|------------|-------|------------------|
+| **Original + Final** | ✓ | ✗ | ✓ | Camera JPEG never edited |
+| **Derivative + Final** | ✗ | ✓ | ✓ | Edited version at end of chain |
+| **Original only** | ✓ | ✗ | ✗ | Camera RAW with edited derivatives |
+| **Derivative only** | ✗ | ✓ | ✗ | Intermediate edit with further versions |
+
+### Invalid Combinations
+
+- **Original + Derivative** - Impossible (can't simultaneously have no parent and have a parent)
+
+### Database Implementation
+
+**Parent Tracking**: The `origin_id` column creates a one-to-many relationship:
+- One original can have many derivatives
+- Each derivative points to exactly one parent
+- Self-referential foreign key: `FOREIGN KEY (origin_id) REFERENCES media(id)`
+
+**Child Tracking**: The `is_final` column efficiently tracks whether an image has children:
+- Automatically maintained by database triggers
+- Updated when derivatives are added, modified, or deleted
+- Enables fast queries without expensive JOINs
+
+### Common Queries
+
+```sql
+-- Find original images (no parent)
+SELECT * FROM media WHERE is_original = TRUE;
+-- or equivalently: WHERE origin_id IS NULL;
+
+-- Find derivatives (has parent)
+SELECT * FROM media WHERE is_original = FALSE;
+-- or equivalently: WHERE origin_id IS NOT NULL;
+
+-- Find final images (no children)
+SELECT * FROM media WHERE is_final = TRUE;
+
+-- Find original + final (camera images never edited)
+SELECT * FROM media WHERE is_original = TRUE AND is_final = TRUE;
+
+-- Find derivative + final (edited versions at end of chain)
+SELECT * FROM media WHERE is_original = FALSE AND is_final = TRUE;
+
+-- Find originals with derivatives (source files that have been edited)
+SELECT * FROM media WHERE is_original = TRUE AND is_final = FALSE;
+
+-- Find all derivatives of a specific original
+SELECT * FROM media WHERE origin_id = 12345;
+
+-- Get the full processing chain for an image
+WITH RECURSIVE processing_chain AS (
+    -- Start with the original
+    SELECT * FROM media WHERE origin_id IS NULL AND id = 12345
+    UNION ALL
+    -- Add all descendants
+    SELECT m.*
+    FROM media m
+    INNER JOIN processing_chain pc ON m.origin_id = pc.id
+)
+SELECT * FROM processing_chain;
+```
+
+### Use Cases
+
+**For Rating Workflow**: Show only `is_original = TRUE` to avoid rating multiple versions of the same image
+
+**For Export**: Query for "Final" images to get the latest processed versions ready for sharing
+
+**For Storage Management**: Find "Original only" (non-Final originals) to identify source files that can be archived after derivatives are created
+
+**For Processing Pipelines**: Track which originals still need processing by finding originals that are also final (never edited)
 
 ---
 
