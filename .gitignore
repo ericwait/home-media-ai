@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# HomeMedia AI specific
+# Exclude environment-specific config, but include template
+src/python/config.yaml
+*.log

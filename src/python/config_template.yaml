@@ -1,0 +1,9 @@
+# ============================================================================
+# HomeMedia AI Configuration Template
+# ============================================================================
+# Copy this file to config.yaml and set your environment-specific values.
+# config.yaml is excluded from version control.
+# ============================================================================
+
+# Root directory where original photos are stored
+photos_root_original: "/path/to/your/photos"
