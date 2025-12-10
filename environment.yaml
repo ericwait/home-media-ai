@@ -4,3 +4,16 @@ channels:
 dependencies:
   # Python
   - python=3.11.9
+
+  # Core dependencies
+  - pyyaml=6.0.1
+  - pandas=2.1.4
+
+  # Jupyter and notebooks
+  - jupyter=1.0.0
+  - notebook=7.0.6
+  - ipykernel=6.28.0
+  - ipython=8.20.0
+
+  # Development tools
+  - pip=25.3
