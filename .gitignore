@@ -210,3 +210,4 @@ __marimo__/
 # Exclude environment-specific config, but include template
 src/python/config.yaml
 *.log
+nul
