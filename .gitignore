@@ -211,3 +211,4 @@ __marimo__/
 src/python/config.yaml
 *.log
 nul
+.vscode
