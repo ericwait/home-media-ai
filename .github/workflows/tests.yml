@@ -41,6 +41,7 @@ jobs:
         environment-file: environment.yaml
         activate-environment: home-media
         use-only-tar-bz2: true
+        conda-remove-defaults: true
 
     - name: Verify conda environment
       shell: bash -l {0}
@@ -50,7 +51,11 @@ jobs:
 
     - name: Install package in development mode
       shell: bash -l {0}
+      env:
+        PIP_NO_WARN_SCRIPT_LOCATION: 0
       run: |
+        # Workaround for Windows pip platformdirs bug
+        export PROGRAMDATA="${PROGRAMDATA:-/c/ProgramData}"
         pip install -e .
 
     - name: Run tests with pytest
