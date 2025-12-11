@@ -124,6 +124,121 @@ class ImageFile:
 
         return FileRole.UNKNOWN
 
+    def populate_hash(self, algorithm: str = "sha256") -> bool:
+        """
+        Calculate and populate the file hash.
+
+        Args:
+            algorithm: Hash algorithm to use (default: "sha256")
+
+        Returns:
+            True if hash was calculated successfully, False otherwise
+
+        Example:
+            >>> image_file = ImageFile.from_path(Path("/photos/IMG_1234.jpg"), "IMG_1234")
+            >>> image_file.populate_hash()
+            >>> print(image_file.file_hash)
+        """
+        try:
+            import hashlib
+
+            hash_obj = hashlib.new(algorithm)
+            with open(self.file_path, "rb") as f:
+                # Read in chunks to handle large files efficiently
+                for chunk in iter(lambda: f.read(8192), b""):
+                    hash_obj.update(chunk)
+
+            self.file_hash = hash_obj.hexdigest()
+            return True
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("Failed to calculate hash for %s: %s", self.file_path, e)
+            return False
+
+    def populate_dimensions(self) -> bool:
+        """
+        Extract and populate image dimensions (width and height).
+
+        This works for both RAW and standard image formats:
+        - RAW files: Uses exifread to extract dimensions from EXIF
+        - Standard formats: Uses Pillow to read image dimensions
+
+        Returns:
+            True if dimensions were extracted successfully, False otherwise
+
+        Example:
+            >>> image_file = ImageFile.from_path(Path("/photos/IMG_1234.CR2"), "IMG_1234")
+            >>> image_file.populate_dimensions()
+            >>> print(f"{image_file.width}x{image_file.height}")
+        """
+        if not self.file_path.exists() or not self.file_path.is_file():
+            return False
+
+        try:
+            # For RAW files, use exifread
+            if self.format.is_raw:
+                return self._extract_dimensions_exifread()
+            # For standard image formats, use Pillow
+            elif self.format.is_image:
+                return self._extract_dimensions_pillow()
+            else:
+                # Not an image file
+                return False
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("Failed to extract dimensions from %s: %s", self.file_path, e)
+            return False
+
+    def _extract_dimensions_pillow(self) -> bool:
+        """Extract dimensions using Pillow."""
+        try:
+            from PIL import Image as PILImage
+
+            with PILImage.open(self.file_path) as img:
+                self.width = img.width
+                self.height = img.height
+                return True
+
+        except Exception:
+            return False
+
+    def _extract_dimensions_exifread(self) -> bool:
+        """Extract dimensions from RAW files using exifread."""
+        try:
+            import exifread
+
+            with open(self.file_path, 'rb') as f:
+                tags = exifread.process_file(f, details=False)
+
+                if not tags:
+                    return False
+
+                # Try different EXIF tags for dimensions
+                width = (
+                    tags.get("EXIF ExifImageWidth") or
+                    tags.get("Image ImageWidth") or
+                    tags.get("Image PixelXDimension")
+                )
+                height = (
+                    tags.get("EXIF ExifImageLength") or
+                    tags.get("Image ImageLength") or
+                    tags.get("Image PixelYDimension")
+                )
+
+                if width and height:
+                    self.width = int(str(width))
+                    self.height = int(str(height))
+                    return True
+
+                return False
+
+        except Exception:
+            return False
+
     def to_dict(self) -> dict:
         """Convert to dictionary for pandas DataFrame."""
         return {
@@ -269,6 +384,58 @@ class Image:
                 jpeg_files[0].role = FileRole.ORIGINAL
 
         self.updated_at = datetime.now()
+
+    def populate_from_exif(self, extract_from_file: Optional[Path] = None) -> bool:
+        """
+        Populate Image metadata from EXIF data.
+
+        Extracts EXIF metadata from the original file (or specified file)
+        and populates the Image fields: captured_at, camera_make, camera_model,
+        lens, GPS coordinates, title, description, and rating.
+
+        Args:
+            extract_from_file: Optional specific file to extract from.
+                             If None, uses the original_file property.
+
+        Returns:
+            True if EXIF data was successfully extracted and populated,
+            False otherwise
+
+        Example:
+            >>> image = Image(base_name="IMG_1234", subdirectory="2025/01/01")
+            >>> image.add_file(ImageFile.from_path(Path("/photos/IMG_1234.CR2"), "IMG_1234"))
+            >>> if image.populate_from_exif():
+            ...     print(f"Captured at: {image.captured_at}")
+        """
+        # Determine which file to extract from
+        target_file = extract_from_file
+        if target_file is None:
+            original = self.original_file
+            if original is None:
+                return False
+            target_file = original.file_path
+
+        # Import here to avoid circular dependency
+        from home_media.scanner.exif import extract_exif_metadata
+
+        # Extract EXIF data
+        exif_data = extract_exif_metadata(target_file)
+        if exif_data is None:
+            return False
+
+        # Populate Image fields
+        self.captured_at = exif_data.captured_at
+        self.camera_make = exif_data.camera_make
+        self.camera_model = exif_data.camera_model
+        self.lens = exif_data.lens
+        self.gps_latitude = exif_data.gps_latitude
+        self.gps_longitude = exif_data.gps_longitude
+        self.title = exif_data.title
+        self.description = exif_data.description
+        self.rating = exif_data.rating
+
+        self.updated_at = datetime.now()
+        return True
 
     def to_dict(self) -> dict:
         """Convert to dictionary for pandas DataFrame (without nested files)."""

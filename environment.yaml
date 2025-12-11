@@ -8,6 +8,8 @@ dependencies:
   # Core dependencies
   - pyyaml=6.0.1
   - pandas=2.1.4
+  - pillow=10.2.0
+  - exifread=3.0.0
 
   # Jupyter and notebooks
   - jupyter=1.0.0

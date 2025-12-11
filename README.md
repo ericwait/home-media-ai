@@ -51,7 +51,10 @@ The system intelligently groups related files by their base name:
     - Directory scanning with optional recursion
     - File grouping by base name patterns
     - DataFrame output for easy analysis
-    - Functions: `scan_directory`, `list_subdirectories`, `group_files_to_images`, `extract_base_name`
+    - EXIF metadata extraction (RAW and standard formats)
+    - File hash calculation for deduplication
+    - Image dimension extraction (width/height)
+    - Functions: `scan_directory`, `list_subdirectories`, `group_files_to_images`, `extract_base_name`, `extract_exif_metadata`
 
 - **Development Environment**
     - Python 3.11 with Jupyter notebooks
@@ -61,8 +64,8 @@ The system intelligently groups related files by their base name:
 ### Next Steps
 
 - Database schema design for media metadata storage
-- EXIF metadata extraction
 - AI/ML integration for classification
+- Duplicate detection and file organization tools
 
 ## Getting Started
 
@@ -97,6 +100,15 @@ print(f"Found {len(images_df)} images with {len(files_df)} files")
 
 # Analyze the results
 print(images_df[['base_name', 'file_count', 'has_raw', 'has_jpeg']].head())
+
+# Scan with full metadata extraction
+images_df, files_df = scan_directory(
+    Path("/photos/2025/01/01"),
+    extract_exif=True,           # Extract EXIF metadata (camera, GPS, etc.)
+    calculate_hash=True,          # Calculate SHA256 for deduplication
+    extract_dimensions=True       # Extract image width/height
+)
+print(files_df[['filename', 'width', 'height', 'file_hash']].head())
 ```
 
 **In a Python script:**

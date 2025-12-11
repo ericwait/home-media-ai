@@ -20,6 +20,9 @@ def scan_directory(
     photos_root: Optional[Path] = None,
     recursive: bool = False,
     include_sidecars: bool = True,
+    extract_exif: bool = False,
+    calculate_hash: bool = False,
+    extract_dimensions: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Scan a directory for image files and return DataFrames.
@@ -30,6 +33,13 @@ def scan_directory(
                     If None, uses the scanned directory.
         recursive: If True, scan subdirectories recursively
         include_sidecars: If True, include sidecar files (XMP, etc.)
+        extract_exif: If True, extract EXIF metadata from original files.
+                     This populates captured_at, camera_make, camera_model, etc.
+                     Note: This can be slow for large directories.
+        calculate_hash: If True, calculate SHA256 hash for each file.
+                       Useful for deduplication. Can be slow for large files.
+        extract_dimensions: If True, extract image dimensions (width, height).
+                           Works for both RAW and standard image formats.
 
     Returns:
         Tuple of (images_df, files_df):
@@ -39,6 +49,19 @@ def scan_directory(
     Example:
         >>> images_df, files_df = scan_directory(Path("/photos/2025/01/01"))
         >>> print(f"Found {len(images_df)} images with {len(files_df)} files")
+
+        >>> # With EXIF extraction
+        >>> images_df, files_df = scan_directory(Path("/photos"), extract_exif=True)
+        >>> print(images_df[['base_name', 'captured_at', 'camera_model']].head())
+
+        >>> # With full metadata
+        >>> images_df, files_df = scan_directory(
+        ...     Path("/photos"),
+        ...     extract_exif=True,
+        ...     calculate_hash=True,
+        ...     extract_dimensions=True
+        ... )
+        >>> print(files_df[['filename', 'width', 'height', 'file_hash']].head())
     """
     if not directory.exists():
         raise FileNotFoundError(f"Directory not found: {directory}")
@@ -58,6 +81,20 @@ def scan_directory(
 
     # Group files into Images
     images = group_files_to_images(file_paths, photos_root)
+
+    # Extract EXIF metadata if requested
+    if extract_exif:
+        for image in images:
+            image.populate_from_exif()
+
+    # Populate file-level metadata if requested
+    if calculate_hash or extract_dimensions:
+        for image in images:
+            for file in image.files:
+                if calculate_hash:
+                    file.populate_hash()
+                if extract_dimensions:
+                    file.populate_dimensions()
 
     # Convert to DataFrames
     images_df = images_to_dataframe(images)

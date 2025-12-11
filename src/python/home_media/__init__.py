@@ -19,7 +19,9 @@ Usage:
 from home_media.__version__ import __version__
 from home_media.models import FileFormat, FileRole, Image, ImageFile
 from home_media.scanner import (
+    ExifData,
     extract_base_name,
+    extract_exif_metadata,
     group_files_to_images,
     list_subdirectories,
     scan_directory,
@@ -33,7 +35,9 @@ __all__ = [
     "Image",
     "ImageFile",
     # Scanner
+    "ExifData",
     "extract_base_name",
+    "extract_exif_metadata",
     "group_files_to_images",
     "list_subdirectories",
     "scan_directory",

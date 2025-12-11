@@ -19,12 +19,19 @@ pip install -e .
 from home_media import scan_directory, Image, ImageFile, FileFormat, FileRole
 from pathlib import Path
 
-# Scan a directory for images
+# Basic scan
 images_df, files_df = scan_directory(Path("/photos/2025/01/01"))
-
-# View summary
 print(f"Found {len(images_df)} images with {len(files_df)} files")
 print(images_df[['base_name', 'file_count', 'has_raw', 'has_jpeg']].head())
+
+# Scan with full metadata extraction
+images_df, files_df = scan_directory(
+    Path("/photos/2025/01/01"),
+    extract_exif=True,           # Extract EXIF metadata
+    calculate_hash=True,          # Calculate SHA256 hashes
+    extract_dimensions=True       # Extract image dimensions
+)
+print(files_df[['filename', 'width', 'height', 'file_hash']].head())
 ```
 
 ## Core Concepts
@@ -88,6 +95,9 @@ image.original_file       # Get the primary capture file
 **Methods:**
 
 ```python
+# Populate EXIF metadata from original file
+image.populate_from_exif()              # Extract camera, GPS, capture time, etc.
+
 # Convert to dict for pandas DataFrame
 image.to_dict()
 
@@ -118,6 +128,10 @@ Represents a single file that is part of an Image.
 ```python
 # Create from a file path
 ImageFile.from_path(file_path, base_name)
+
+# Populate lazy-loaded metadata
+image_file.populate_hash()         # Calculate SHA256 hash
+image_file.populate_dimensions()   # Extract width/height
 
 # Convert to dict for pandas DataFrame
 image_file.to_dict()
@@ -164,6 +178,9 @@ def scan_directory(
     photos_root: Optional[Path] = None,
     recursive: bool = False,
     include_sidecars: bool = True,
+    extract_exif: bool = False,
+    calculate_hash: bool = False,
+    extract_dimensions: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Args:
@@ -171,6 +188,9 @@ def scan_directory(
         photos_root: Root for calculating relative subdirectories (defaults to directory)
         recursive: If True, scan subdirectories recursively
         include_sidecars: If True, include sidecar files (XMP, etc.)
+        extract_exif: If True, extract EXIF metadata (camera, GPS, capture time)
+        calculate_hash: If True, calculate SHA256 hash for each file
+        extract_dimensions: If True, extract image dimensions (width, height)
 
     Returns:
         Tuple of (images_df, files_df):
@@ -184,7 +204,7 @@ def scan_directory(
 ```python
 from pathlib import Path
 
-# Scan a single directory
+# Basic scan
 images_df, files_df = scan_directory(Path("/photos/2025/01/01"))
 
 # Scan recursively with a custom root
@@ -194,10 +214,23 @@ images_df, files_df = scan_directory(
     recursive=True
 )
 
+# Scan with full metadata extraction
+images_df, files_df = scan_directory(
+    Path("/photos/2025/01/01"),
+    extract_exif=True,           # Extract EXIF (camera, GPS, capture time)
+    calculate_hash=True,          # Calculate SHA256 for deduplication
+    extract_dimensions=True       # Extract image dimensions
+)
+
 # Analyze results
 print(f"Total images: {len(images_df)}")
 print(f"Images with RAW: {images_df['has_raw'].sum()}")
-print(f"Images with sidecars: {images_df['has_sidecar'].sum()}")
+print(f"Images with EXIF: {images_df['captured_at'].notna().sum()}")
+print(f"Files with dimensions: {files_df['width'].notna().sum()}")
+
+# Find duplicates
+duplicates = files_df[files_df['file_hash'].notna()].groupby('file_hash').filter(lambda x: len(x) > 1)
+print(f"Potential duplicates: {len(duplicates)}")
 ```
 
 #### `list_subdirectories()`
@@ -305,8 +338,10 @@ Columns include:
 - `total_size_bytes` - Total size of all files
 - `has_raw`, `has_jpeg`, `has_sidecar` - Boolean flags
 - `earliest_file_date`, `latest_file_date` - File timestamps
-- `captured_at` - When photo was taken (if available)
-- `camera_make`, `camera_model` - Camera info (if available)
+- `captured_at` - When photo was taken (from EXIF if extracted)
+- `camera_make`, `camera_model`, `lens` - Camera info (from EXIF if extracted)
+- `gps_latitude`, `gps_longitude` - GPS coordinates (from EXIF if extracted)
+- `title`, `description`, `rating` - User metadata (from EXIF if extracted)
 
 ### Files DataFrame
 
@@ -319,8 +354,8 @@ Columns include:
 - `file_created_at`, `file_modified_at` - Timestamps
 - `format` - FileFormat value (e.g., "cr2", "jpg")
 - `role` - FileRole name (e.g., "ORIGINAL", "SIDECAR")
-- `width`, `height` - Image dimensions (if loaded)
-- `file_hash` - File hash (if computed)
+- `width`, `height` - Image dimensions in pixels (if extracted)
+- `file_hash` - SHA256 hash for deduplication (if calculated)
 
 ### Example Analysis
 
@@ -335,6 +370,19 @@ print(format_sizes.sort_values(ascending=False))
 
 # Find largest images
 largest = images_df.nlargest(10, 'total_size_bytes')[['base_name', 'total_size_bytes', 'file_count']]
+
+# Analyze image dimensions
+image_files = files_df[files_df['width'].notna()]
+image_files['megapixels'] = (image_files['width'] * image_files['height']) / 1_000_000
+print(f"Average resolution: {image_files['width'].mean():.0f}x{image_files['height'].mean():.0f}")
+print(f"Average megapixels: {image_files['megapixels'].mean():.2f} MP")
+
+# Find duplicate files by hash
+duplicates = files_df[files_df['file_hash'].notna()].groupby('file_hash').filter(lambda x: len(x) > 1)
+if len(duplicates) > 0:
+    print(f"Found {len(duplicates)} duplicate files")
+    for hash_val, group in duplicates.groupby('file_hash'):
+        print(f"  {hash_val[:16]}...: {list(group['filename'])}")
 ```
 
 ## Package Structure
@@ -350,6 +398,7 @@ home_media/
 ├── scanner/                 # Directory scanning
 │   ├── __init__.py
 │   ├── directory.py        # scan_directory, list_subdirectories
+│   ├── exif.py             # EXIF metadata extraction
 │   ├── grouper.py          # group_files_to_images
 │   └── patterns.py         # extract_base_name, pattern matching
 ├── config/                  # Configuration (future)
@@ -359,12 +408,32 @@ home_media/
 └── utils/                   # Utilities (future)
 ```
 
+## Implemented Features
+
+✅ **EXIF Metadata Extraction**
+
+- Supports both RAW (CR2, CR3, NEF, DNG, etc.) and standard formats (JPEG, PNG, TIFF)
+- Extracts: capture time, camera make/model, lens, GPS coordinates, title, description, rating
+- Uses exifread for RAW files and Pillow for standard formats
+- Lazy-loading design for performance
+
+✅ **File Hash Calculation**
+
+- SHA256 hashing for file deduplication
+- Efficient chunked reading for large files
+- Optional per-file basis for flexibility
+
+✅ **Image Dimensions**
+
+- Extracts width and height from both RAW and standard image formats
+- Works with EXIF data for RAW files
+- Direct image reading for standard formats
+
 ## Future Features
 
-- EXIF metadata extraction and lazy-loading
 - Database integration for persistent storage
 - AI-powered image classification and tagging
-- Duplicate detection using perceptual hashing
+- Perceptual hashing for finding similar images
 - Batch renaming and organization tools
 - Web interface for browsing and management
 
