@@ -21,6 +21,6 @@ dependencies:
   - pip=25.3
 
   # Testing
-  - pytest=8.0.0
-  - pytest-cov=4.1.0
+  - pytest
+  - pytest-cov
   - pytest-mock
