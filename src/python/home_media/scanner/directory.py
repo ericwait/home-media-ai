@@ -61,7 +61,7 @@ def scan_directory(
 
     # Convert to DataFrames
     images_df = images_to_dataframe(images)
-    files_df = image_files_to_dataframe(images)
+    files_df  = image_files_to_dataframe(images)
 
     return images_df, files_df
 
@@ -84,10 +84,7 @@ def _collect_files(
     """
     files = []
 
-    if recursive:
-        iterator = directory.rglob("*")
-    else:
-        iterator = directory.iterdir()
+    iterator = directory.rglob("*") if recursive else directory.iterdir()
 
     for path in iterator:
         if not path.is_file():

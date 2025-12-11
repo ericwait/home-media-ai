@@ -15,6 +15,8 @@ import re
 from pathlib import Path
 from typing import Tuple
 
+from home_media.models.enums import FileFormat
+
 
 def extract_base_name(filename: str) -> Tuple[str, str]:
     """
@@ -45,6 +47,9 @@ def extract_base_name(filename: str) -> Tuple[str, str]:
         >>> extract_base_name("photo.jpg.xmp")
         ('photo', '.jpg.xmp')
     """
+
+    # TODO: Maybe we can think about something more global/flexible later?
+    # Given all the names in a directory, it might be possible to find the best patterns or use EXIF data?
     base_name = filename
 
     # Pattern 1: Google Pixel RAW files (PXL_timestamp.RAW-##.TYPE.ext)
@@ -61,11 +66,7 @@ def extract_base_name(filename: str) -> Tuple[str, str]:
 
     # Pattern 3: Check for numeric suffix like _001, _002 at the end
     match = re.match(r"^(.+?)(_\d+)?$", name_without_ext)
-    if match:
-        base_name = match.group(1)
-    else:
-        base_name = name_without_ext
-
+    base_name = match[1] if match else name_without_ext
     # Calculate the suffix (everything after base_name)
     suffix = filename[len(base_name):]
 
@@ -76,23 +77,22 @@ def is_sidecar_file(filename: str) -> bool:
     """
     Check if a file is a sidecar/metadata file.
 
+    Uses the FileFormat enum to determine if the file is a sidecar.
+
     Args:
         filename: The filename to check
 
     Returns:
         True if this is a sidecar file (XMP, THM, etc.)
     """
-    lower = filename.lower()
-    return (
-        lower.endswith(".xmp")
-        or lower.endswith(".thm")
-        or ".xmp" in lower  # Handles .jpg.xmp
-    )
+    return FileFormat.from_filename(filename).is_sidecar
 
 
 def is_raw_file(filename: str) -> bool:
     """
     Check if a file is a RAW image file.
+
+    Uses the FileFormat enum to determine if the file is a RAW format.
 
     Args:
         filename: The filename to check
@@ -100,17 +100,14 @@ def is_raw_file(filename: str) -> bool:
     Returns:
         True if this is a RAW file
     """
-    raw_extensions = {
-        ".cr2", ".cr3", ".nef", ".arw", ".dng",
-        ".raf", ".orf", ".rw2", ".raw"
-    }
-    ext = Path(filename).suffix.lower()
-    return ext in raw_extensions
+    return FileFormat.from_filename(filename).is_raw
 
 
 def is_image_file(filename: str) -> bool:
     """
     Check if a file is an image file (RAW or standard).
+
+    Uses the FileFormat enum to determine if the file is an image format.
 
     Args:
         filename: The filename to check
@@ -118,16 +115,7 @@ def is_image_file(filename: str) -> bool:
     Returns:
         True if this is an image file
     """
-    image_extensions = {
-        # RAW
-        ".cr2", ".cr3", ".nef", ".arw", ".dng",
-        ".raf", ".orf", ".rw2", ".raw",
-        # Standard
-        ".jpg", ".jpeg", ".png", ".tiff", ".tif",
-        ".heic", ".heif", ".webp",
-    }
-    ext = Path(filename).suffix.lower()
-    return ext in image_extensions
+    return FileFormat.from_filename(filename).is_image
 
 
 def get_final_extension(filename: str) -> str:

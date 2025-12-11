@@ -1,4 +1,4 @@
-# home-media-ai
+# home-media
 
 AI-powered home media management and classification system for working with images and video to classify and judge the content within.
 

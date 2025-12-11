@@ -48,6 +48,7 @@ class FileFormat(Enum):
     PNG = "png"
     TIFF = "tiff"
     HEIC = "heic"
+    HEIF = "heif"
     WEBP = "webp"
 
     # Metadata/sidecar formats
@@ -76,9 +77,9 @@ class FileFormat(Enum):
         ext = extension.lower().lstrip(".")
 
         # Handle common variations
-        if ext in ("jpg", "jpeg"):
+        if ext in {"jpg", "jpeg"}:
             return cls.JPEG
-        if ext in ("tif", "tiff"):
+        if ext in {"tif", "tiff"}:
             return cls.TIFF
 
         # Try direct match
@@ -88,21 +89,46 @@ class FileFormat(Enum):
 
         return cls.UNKNOWN
 
+    @classmethod
+    def from_filename(cls, filename: str) -> "FileFormat":
+        """
+        Get FileFormat from a filename or file path.
+
+        Convenience method that extracts the extension and returns the format.
+
+        Args:
+            filename: Filename or full path (e.g., "photo.jpg" or "/path/to/photo.CR2")
+
+        Returns:
+            The matching FileFormat, or UNKNOWN if not recognized
+
+        Examples:
+            >>> FileFormat.from_filename("photo.jpg")
+            FileFormat.JPEG
+            >>> FileFormat.from_filename("/photos/2025/01/IMG_1234.CR2")
+            FileFormat.CR2
+            >>> FileFormat.from_filename("sidecar.xmp")
+            FileFormat.XMP
+        """
+        from pathlib import Path
+        ext = Path(filename).suffix
+        return cls.from_extension(ext)
+
     @property
     def is_raw(self) -> bool:
         """Check if this format is a RAW format."""
         return self in (
             FileFormat.CR2, FileFormat.CR3, FileFormat.NEF,
             FileFormat.ARW, FileFormat.DNG, FileFormat.RAF,
-            FileFormat.ORF, FileFormat.RW2
+            FileFormat.ORF, FileFormat.RW2, FileFormat.TIFF
         )
 
     @property
     def is_image(self) -> bool:
         """Check if this format is a viewable image format."""
         return self in (
-            FileFormat.JPEG, FileFormat.PNG, FileFormat.TIFF,
-            FileFormat.HEIC, FileFormat.WEBP
+            FileFormat.JPEG, FileFormat.PNG,
+            FileFormat.HEIC, FileFormat.HEIF, FileFormat.WEBP
         ) or self.is_raw
 
     @property

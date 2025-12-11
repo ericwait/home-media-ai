@@ -198,16 +198,12 @@ class Image:
     @property
     def earliest_file_date(self) -> Optional[datetime]:
         """Earliest file creation date across all files."""
-        if not self.files:
-            return None
-        return min(f.file_created_at for f in self.files)
+        return min(f.file_created_at for f in self.files) if self.files else None
 
     @property
     def latest_file_date(self) -> Optional[datetime]:
         """Latest file modification date across all files."""
-        if not self.files:
-            return None
-        return max(f.file_modified_at for f in self.files)
+        return max(f.file_modified_at for f in self.files) if self.files else None
 
     @property
     def original_file(self) -> Optional[ImageFile]:
@@ -240,6 +236,38 @@ class Image:
     def add_file(self, image_file: ImageFile) -> None:
         """Add an ImageFile to this Image."""
         self.files.append(image_file)
+        self.updated_at = datetime.now()
+
+    def refine_file_roles(self) -> None:
+        """
+        Refine file roles based on the complete set of files in this Image.
+
+        This method applies context-aware rules that require knowledge of all files:
+        - If there's a RAW file, JPEGs are typically EXPORTs (unless marked as COVER)
+        - If there's NO RAW file, a standalone JPEG becomes the ORIGINAL
+        - Ensures only one file is marked as ORIGINAL
+
+        Called after all files have been added to the Image.
+        """
+        # Rule 1: If there's a RAW file, it should be the ORIGINAL
+        if self.has_raw:
+            # Any JPEG that was initially marked as ORIGINAL should be reclassified
+            for f in self.files:
+                if f.format == FileFormat.JPEG and f.role == FileRole.ORIGINAL:
+                    if FileRole.COVER not in [file.role for file in self.files]:
+                        # If no file is marked as COVER, this could be a cover
+                        f.role = FileRole.COVER if ".COVER." in f.suffix.upper() else FileRole.EXPORT
+                    else:
+                        f.role = FileRole.EXPORT
+
+        else:
+            # Find standalone JPEG files that might have been marked as EXPORT
+            jpeg_files = [f for f in self.files if f.format == FileFormat.JPEG]
+
+            # If there's exactly one JPEG and it's not ORIGINAL, promote it
+            if len(jpeg_files) == 1 and jpeg_files[0].role != FileRole.ORIGINAL and jpeg_files[0].role not in (FileRole.COVER, FileRole.DERIVATIVE):
+                jpeg_files[0].role = FileRole.ORIGINAL
+
         self.updated_at = datetime.now()
 
     def to_dict(self) -> dict:
@@ -275,9 +303,7 @@ class Image:
             Canonical name string, or current base_name if no capture time available
         """
         dt = captured_at or self.captured_at
-        if dt is None:
-            return self.base_name
-        return dt.strftime("%Y-%m-%d_%H-%M-%S")
+        return self.base_name if dt is None else dt.strftime("%Y-%m-%d_%H-%M-%S")
 
     def get_canonical_subdirectory(self, captured_at: Optional[datetime] = None) -> str:
         """
@@ -292,6 +318,4 @@ class Image:
             Canonical subdirectory string, or current subdirectory if no capture time
         """
         dt = captured_at or self.captured_at
-        if dt is None:
-            return self.subdirectory
-        return dt.strftime("%Y/%m/%d")
+        return self.subdirectory if dt is None else dt.strftime("%Y/%m/%d")

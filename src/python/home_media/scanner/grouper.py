@@ -6,12 +6,15 @@ where each Image represents a moment in time and may contain multiple files
 (RAW, JPEG, XMP sidecar, etc.).
 """
 
+import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from home_media.models.image import Image, ImageFile
 from home_media.scanner.patterns import extract_base_name
+
+logger = logging.getLogger(__name__)
 
 
 def group_files_to_images(
@@ -53,6 +56,12 @@ def group_files_to_images(
             subdirectory = str(file_path.parent.relative_to(photos_root))
         except ValueError:
             # File is not under photos_root, use parent directory name
+            logger.warning(
+                "File %s is not under photos_root %s. Using parent directory name: %s",
+                file_path,
+                photos_root,
+                file_path.parent.name,
+            )
             subdirectory = file_path.parent.name
 
         # Use (base_name, subdirectory) as the grouping key
@@ -67,6 +76,9 @@ def group_files_to_images(
         for file_path in paths:
             image_file = ImageFile.from_path(file_path, base_name)
             image.add_file(image_file)
+
+        # Refine file roles based on complete context
+        image.refine_file_roles()
 
         images.append(image)
 
