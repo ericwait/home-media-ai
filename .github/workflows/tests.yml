@@ -51,11 +51,9 @@ jobs:
 
     - name: Install package in development mode
       shell: bash -l {0}
-      env:
-        PIP_NO_WARN_SCRIPT_LOCATION: 0
       run: |
-        # Workaround for Windows pip platformdirs bug
-        export PROGRAMDATA="${PROGRAMDATA:-/c/ProgramData}"
+        # Upgrade pip to fix Windows platformdirs bug
+        python -m pip install --upgrade pip setuptools wheel
         pip install -e .
 
     - name: Run tests with pytest
