@@ -65,7 +65,8 @@ def extract_base_name(filename: str) -> Tuple[str, str]:
         name_without_ext = Path(name_without_ext).stem
 
     # Pattern 3: Check for numeric suffix like _001, _002 at the end
-    match = re.match(r"^(.+?)(_\d+)?$", name_without_ext)
+    # Match exactly 3 digits for derivative versions (e.g., _001, _002)
+    match = re.match(r"^(.+?)(_\d{3})$", name_without_ext)
     base_name = match[1] if match else name_without_ext
     # Calculate the suffix (everything after base_name)
     suffix = filename[len(base_name):]

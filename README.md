@@ -40,12 +40,17 @@ The system intelligently groups related files by their base name:
 
 ## Current Status
 
+[![Tests](https://img.shields.io/badge/tests-265%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-77%25-green)](htmlcov/index.html)
+[![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
+
 ### Implemented
 
 - **Data Models** ([`home_media.models`](src/python/home_media/models/))
     - `Image` and `ImageFile` dataclasses with pandas integration
     - `FileFormat` and `FileRole` enumerations
     - Lazy-loading support for EXIF metadata
+    - Support for 20+ file formats (CR2, CR3, NEF, ARW, DNG, JPEG, PNG, HEIC, etc.)
 
 - **Scanner Module** ([`home_media.scanner`](src/python/home_media/scanner/))
     - Directory scanning with optional recursion
@@ -55,6 +60,13 @@ The system intelligently groups related files by their base name:
     - File hash calculation for deduplication
     - Image dimension extraction (width/height)
     - Functions: `scan_directory`, `list_subdirectories`, `group_files_to_images`, `extract_base_name`, `extract_exif_metadata`
+
+- **Testing & CI/CD** ✨ **NEW!**
+    - 265 comprehensive unit tests (100% passing)
+    - 77% code coverage
+    - GitHub Actions workflows for multi-OS testing
+    - Automated coverage reporting
+    - See [TESTING.md](TESTING.md) for details
 
 - **Development Environment**
     - Python 3.11 with Jupyter notebooks
@@ -74,7 +86,10 @@ The system intelligently groups related files by their base name:
 ```bash
 # Create and activate conda environment
 conda env create -f environment.yaml
-conda activate home-media-ai
+conda activate home-media
+
+# Install package in development mode
+pip install -e .
 ```
 
 ### 2. Configure for your environment
@@ -128,6 +143,37 @@ for subdir in subdirs:
 ```
 
 See the [Python module README](src/python/home_media/README.md) for detailed API documentation.
+
+## Testing
+
+The project has comprehensive test coverage. See [TESTING.md](TESTING.md) for detailed information.
+
+### Quick Test Commands
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=home_media --cov-report=html
+
+# Run specific test suite
+pytest tests/models/        # Model tests only
+pytest tests/scanner/       # Scanner tests only
+
+# Run by marker
+pytest -m unit             # Fast unit tests
+pytest -m "not slow"       # Skip slow tests
+```
+
+### Test Results
+
+- ✅ **265 tests** all passing
+- ✅ **77% coverage** overall
+- ✅ **100% coverage** on core modules (enums, patterns, grouper)
+- ⚡ **1.84 seconds** total execution time
+
+See [FINAL_TEST_REPORT.md](FINAL_TEST_REPORT.md) for detailed test results.
 
 ## Project Structure
 

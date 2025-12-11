@@ -19,3 +19,8 @@ dependencies:
 
   # Development tools
   - pip=25.3
+
+  # Testing
+  - pytest=8.0.0
+  - pytest-cov=4.1.0
+  - pytest-mock=3.12.0

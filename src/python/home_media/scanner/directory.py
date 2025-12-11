@@ -6,11 +6,11 @@ and return the results as pandas DataFrames for easy analysis.
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import pandas as pd
 
-from home_media.models.image import Image
+from home_media.models.image import Image, ImageFile
 from home_media.scanner.grouper import group_files_to_images
 from home_media.scanner.patterns import is_image_file, is_sidecar_file
 
@@ -157,37 +157,47 @@ def images_to_dataframe(images: List[Image]) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def image_files_to_dataframe(images: List[Image]) -> pd.DataFrame:
+def image_files_to_dataframe(files: Union[List[Image], List[ImageFile]]) -> pd.DataFrame:
     """
-    Convert all ImageFiles from a list of Images to a pandas DataFrame.
+    Convert ImageFiles to a pandas DataFrame.
 
     Args:
-        images: List of Image objects
+        files: Either a list of Image objects (extracts all ImageFiles)
+              or a list of ImageFile objects directly
 
     Returns:
-        DataFrame with one row per ImageFile, with base_name for linking
+        DataFrame with one row per ImageFile
     """
-    if not images:
+    if not files:
         return pd.DataFrame()
 
     data = []
-    for image in images:
-        for file in image.files:
-            file_dict = file.to_dict()
-            # Add image identifiers for linking
-            file_dict["base_name"] = image.base_name
-            file_dict["subdirectory"] = image.subdirectory
-            data.append(file_dict)
+
+    # Check if we have Images or ImageFiles
+    if isinstance(files[0], Image):
+        # Extract ImageFiles from Images
+        for image in files:
+            for file in image.files:
+                file_dict = file.to_dict()
+                # Add image identifiers for linking
+                file_dict["base_name"] = image.base_name
+                file_dict["subdirectory"] = image.subdirectory
+                data.append(file_dict)
+    else:
+        # Direct list of ImageFiles
+        for file in files:
+            data.append(file.to_dict())
 
     return pd.DataFrame(data)
 
 
-def list_subdirectories(directory: Path) -> List[Path]:
+def list_subdirectories(directory: Path, recursive: bool = False) -> List[Path]:
     """
     List all subdirectories in a directory.
 
     Args:
         directory: Directory to scan
+        recursive: If True, list subdirectories recursively
 
     Returns:
         List of subdirectory paths, sorted alphabetically
@@ -198,20 +208,37 @@ def list_subdirectories(directory: Path) -> List[Path]:
     if not directory.is_dir():
         raise NotADirectoryError(f"Not a directory: {directory}")
 
-    subdirs = [d for d in directory.iterdir() if d.is_dir()]
+    subdirs = []
+
+    if recursive:
+        # Use rglob to find all subdirectories recursively
+        for item in directory.rglob("*"):
+            if item.is_dir():
+                subdirs.append(item)
+    else:
+        # Just list immediate subdirectories
+        for item in directory.iterdir():
+            if item.is_dir():
+                subdirs.append(item)
+
     return sorted(subdirs)
 
 
-def count_files_in_directory(directory: Path, recursive: bool = False) -> int:
+def count_files_in_directory(
+    directory: Path,
+    recursive: bool = False,
+    include_sidecars: bool = True,
+) -> int:
     """
     Count the number of image files in a directory.
 
     Args:
         directory: Directory to scan
         recursive: If True, count files in subdirectories too
+        include_sidecars: If True, include sidecar files in the count
 
     Returns:
         Number of image files
     """
-    files = _collect_files(directory, recursive=recursive, include_sidecars=True)
+    files = _collect_files(directory, recursive=recursive, include_sidecars=include_sidecars)
     return len(files)
