@@ -40,7 +40,7 @@ The system intelligently groups related files by their base name:
 
 ## Current Status
 
-[![Tests](https://img.shields.io/badge/tests-265%20passing-brightgreen)](tests/)
+[![Tests](https://github.com/ericwait/home-media-ai/actions/workflows/tests.yml/badge.svg)](https://github.com/ericwait/home-media-ai/actions/workflows/tests.yml)
 [![Coverage](https://img.shields.io/badge/coverage-77%25-green)](htmlcov/index.html)
 [![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
 
