@@ -49,10 +49,23 @@ jobs:
         conda info
         conda list
 
+    - name: Fix Windows platformdirs bug
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # Set ProgramData env var to fix platformdirs registry lookup bug on GitHub Actions
+        if (-not $env:ProgramData) {
+          echo "ProgramData=C:\ProgramData" >> $env:GITHUB_ENV
+        }
+        # Also ensure APPDATA is set
+        if (-not $env:APPDATA) {
+          echo "APPDATA=$env:USERPROFILE\AppData\Roaming" >> $env:GITHUB_ENV
+        }
+
     - name: Install package in development mode
       shell: bash -l {0}
       run: |
-        # Upgrade pip to fix Windows platformdirs bug
+        # Upgrade pip and setuptools
         python -m pip install --upgrade pip setuptools wheel
         pip install -e .
 
