@@ -27,4 +27,4 @@ EXPOSE 5100
 
 # Run with gunicorn
 # Add --reload flag for development (auto-restart on code changes)
-CMD ["gunicorn", "--bind", "0.0.0.0:5100", "--workers", "2", "--timeout", "300", "--access-logfile", "-", "--worker-class", "sync", "--max-requests", "100", "--max-requests-jitter", "10", "--reload", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5100", "--workers", "4", "--timeout", "300", "--access-logfile", "-", "--worker-class", "sync", "--max-requests", "100", "--max-requests-jitter", "10", "--reload", "app:app"]

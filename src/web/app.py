@@ -899,10 +899,18 @@ def get_rating_queue():
         ]
         params = {'year': year, 'month': month, 'limit': limit}
 
-        # Unrated only filter
-        unrated_only = request.args.get('unrated_only') == 'true'
-        if unrated_only:
-            where_clauses.append("(m.rating IS NULL OR m.rating = 0)")
+        # Rating filter
+        if rating_min := request.args.get('rating_min'):
+            where_clauses.append("m.rating >= :rating_min")
+            params['rating_min'] = int(rating_min)
+
+        if rating_max := request.args.get('rating_max'):
+            r_max = int(rating_max)
+            if r_max == 0:
+                where_clauses.append("(m.rating <= :rating_max OR m.rating IS NULL)")
+            else:
+                where_clauses.append("m.rating <= :rating_max")
+            params['rating_max'] = r_max
 
         if start_from:
             where_clauses.append("m.id > :start_from")

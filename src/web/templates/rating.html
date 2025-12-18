@@ -242,14 +242,39 @@
     </div>
 
     <div class="settings-panel" id="settings">
-        <label>
-            <input type="checkbox" id="autoAdvance" onchange="saveSettings()">
-            Auto-advance after rating
-        </label>
-        <label style="margin-left: 2rem;">
-            <input type="checkbox" id="unratedOnly" onchange="saveSettings(); loadImages();">
-            Only show unrated
-        </label>
+        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label>
+                <input type="checkbox" id="autoAdvance" onchange="saveSettings()">
+                Auto-advance after rating
+            </label>
+            
+            <div style="display: flex; gap: 1rem;">
+                <label>
+                    Min Rating (>=):
+                    <select id="ratingMin" onchange="saveSettings(); loadImages();" style="margin-left: 0.5rem; padding: 0.2rem; background: #333; color: #fff; border: 1px solid #444;">
+                        <option value="">Any</option>
+                        <option value="1">1★</option>
+                        <option value="2">2★</option>
+                        <option value="3">3★</option>
+                        <option value="4">4★</option>
+                        <option value="5">5★</option>
+                    </select>
+                </label>
+                
+                <label>
+                    Max Rating (<=):
+                    <select id="ratingMax" onchange="saveSettings(); loadImages();" style="margin-left: 0.5rem; padding: 0.2rem; background: #333; color: #fff; border: 1px solid #444;">
+                        <option value="">Any</option>
+                        <option value="0">0★ (Unrated)</option>
+                        <option value="1">1★</option>
+                        <option value="2">2★</option>
+                        <option value="3">3★</option>
+                        <option value="4">4★</option>
+                        <option value="5">5★</option>
+                    </select>
+                </label>
+            </div>
+        </div>
     </div>
 
     <div class="main-view">
@@ -282,7 +307,8 @@ let currentIndex = 0;
 let inBurstView = false;
 let selectedBurstIndex = 0;
 let autoAdvance = false;
-let unratedOnly = false;
+let ratingMin = "";
+let ratingMax = "";
 let isLoading = false;
 let hasMoreImages = true;
 let lastImageId = null;
@@ -291,15 +317,23 @@ let lastImageId = null;
 function loadSettings() {
     autoAdvance = localStorage.getItem('ratingAutoAdvance') === 'true';
     document.getElementById('autoAdvance').checked = autoAdvance;
-    unratedOnly = localStorage.getItem('ratingUnratedOnly') === 'true';
-    document.getElementById('unratedOnly').checked = unratedOnly;
+    
+    ratingMin = localStorage.getItem('ratingMin') || "";
+    document.getElementById('ratingMin').value = ratingMin;
+    
+    ratingMax = localStorage.getItem('ratingMax') || "";
+    document.getElementById('ratingMax').value = ratingMax;
 }
 
 function saveSettings() {
     autoAdvance = document.getElementById('autoAdvance').checked;
     localStorage.setItem('ratingAutoAdvance', autoAdvance);
-    unratedOnly = document.getElementById('unratedOnly').checked;
-    localStorage.setItem('ratingUnratedOnly', unratedOnly);
+    
+    ratingMin = document.getElementById('ratingMin').value;
+    localStorage.setItem('ratingMin', ratingMin);
+    
+    ratingMax = document.getElementById('ratingMax').value;
+    localStorage.setItem('ratingMax', ratingMax);
 }
 
 function toggleSettings() {
@@ -341,9 +375,14 @@ async function loadMoreImages() {
 
     try {
         let url = `/api/rating-queue?year=${YEAR}&month=${MONTH}&burst_window=${BURST_WINDOW}&limit=${CHUNK_SIZE}`;
-        if (unratedOnly) {
-            url += '&unrated_only=true';
+        
+        if (ratingMin) {
+            url += `&rating_min=${ratingMin}`;
         }
+        if (ratingMax) {
+            url += `&rating_max=${ratingMax}`;
+        }
+        
         if (lastImageId) {
             url += `&start_from=${lastImageId}`;
         }
