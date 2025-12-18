@@ -8,17 +8,31 @@ services:
     ports:
       - "5100:5100"
     user: "1034:65539"
+    volumes:
+      # Mount your photo directory (read-only)
+      # IMPORTANT: Change /volume1/photos to YOUR actual photo path
+      - /volume1/photo/RAW:/mnt/media
+      - /volume1/docker/home-media-viewer/thumbnails:/thumbnails:ro
+      - ./:/app
     environment:
       - HOME_MEDIA_AI_URI=mariadb+mariadbconnector://your_user:your_password@your_nas_ip:3306/home_media_ai
       # /mnt/media is default in app.py
       - PHOTO_ROOT=/mnt/media
       - FLASK_ENV=production
-    volumes:
-      # Mount your photo directory (read-only)
-      # IMPORTANT: Change /volume1/photos to YOUR actual photo path
-      - /volume1/photo/RAW:/mnt/media
-      # Mount application code for live updates (development mode)
-      # This allows you to update code without rebuilding the container
-      - ./:/app
+      # Photo root directory (matches volume mount above)
+      - HOME_MEDIA_AI_PHOTO_ROOT=/mnt/media
+      # Flask secret key for sessions (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+      - FLASK_SECRET_KEY=02182541ad2f8953abc5fd9b4f3f61c263e1d5b3ae22f7c5b88311f2cf65be7f
+
+      # Session timeout in hours
+      - SESSION_TIMEOUT_HOURS=24
     restart: unless-stopped
     # Removed the custom network - not needed for single service 
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5100/api/stats')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+  
