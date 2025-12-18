@@ -918,6 +918,34 @@ def get_rating_queue():
 
         where_sql = " AND ".join(where_clauses)
 
+        # Count total matching images (ignoring limit/pagination)
+        count_sql = f"SELECT COUNT(*) FROM media m WHERE {where_sql}"
+        # We need to copy params because we might have added start_from which shouldn't affect count
+        # But wait, start_from IS in params if it was added. 
+        # Actually start_from SHOULD NOT affect the "total count of items to be rated in this filter", usually.
+        # If I want "Total items in this view", it should probably exclude 'start_from' if that's just for pagination.
+        # However, the user asked "how many pictures total are to be displayed".
+        # If I am on page 2, the "total" usually means the grand total matching the criteria, not just remaining.
+        # But 'start_from' is used for cursor-based pagination here.
+        # If I include 'start_from' in the count query, it will count "remaining images".
+        # If I exclude it, it will count "all images in this year/month/filter".
+        # Since the UI shows "X / Y rated", Y is usually the total in the set.
+        # The existing UI calculates "rated / loaded_images".
+        # I think the user wants "Total images in this Year/Month matching filters".
+        # So I should remove 'start_from' from the count query params/clauses.
+        
+        # Let's rebuild params for count query or just clean it up.
+        count_params = params.copy()
+        if 'start_from' in count_params:
+            del count_params['start_from']
+        
+        # We need to construct count_where_sql without start_from
+        count_where_clauses = [c for c in where_clauses if "m.id > :start_from" not in c]
+        count_where_sql = " AND ".join(count_where_clauses)
+        
+        count_sql = f"SELECT COUNT(*) FROM media m WHERE {count_where_sql}"
+        total_count = session.execute(text(count_sql), count_params).scalar()
+
         query_sql = f"""
             SELECT
                 m.id,
@@ -991,7 +1019,8 @@ def get_rating_queue():
             'bursts': bursts,
             'year': year,
             'month': month,
-            'burst_window': burst_window
+            'burst_window': burst_window,
+            'total_count': total_count
         })
 
     except Exception as e:

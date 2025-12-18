@@ -274,6 +274,10 @@
                     </select>
                 </label>
             </div>
+            
+            <div style="width: 100%; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid #333; color: #aaa;">
+                Total images matching filters: <span id="total-count-display" style="font-weight: bold; color: #e0e0e0;">-</span>
+            </div>
         </div>
     </div>
 
@@ -393,6 +397,12 @@ async function loadMoreImages() {
         if (data.error) {
             alert('Error loading images: ' + data.error);
             return;
+        }
+
+        // Update total count
+        if (data.total_count !== undefined) {
+            const countEl = document.getElementById('total-count-display');
+            if (countEl) countEl.textContent = data.total_count.toLocaleString();
         }
 
         if (data.images.length > 0) {
