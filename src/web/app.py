@@ -173,7 +173,7 @@ def get_images():
         offset = (page - 1) * per_page
 
         # Build WHERE clause based on filters
-        where_clauses = ["m.is_original = TRUE"]  # Only show originals
+        where_clauses = ["m.is_final = TRUE"]  # Only show final images (best version)  # Only show originals
         params = {}
 
         # Rating filter
@@ -351,7 +351,7 @@ def get_stats():
                 SUM(m.file_size) / (1024*1024*1024) as total_gb
             FROM media m
             JOIN media_types mt ON m.media_type_id = mt.id
-            WHERE m.is_original = TRUE
+            WHERE m.is_final = TRUE
             GROUP BY mt.name
             ORDER BY count DESC
         """)).fetchall()
@@ -362,7 +362,7 @@ def get_stats():
                 COALESCE(rating, -1) as rating,
                 COUNT(*) as count
             FROM media
-            WHERE is_original = TRUE
+            WHERE is_final = TRUE
             GROUP BY rating
             ORDER BY rating
         """)).fetchall()
@@ -373,7 +373,7 @@ def get_stats():
                 CONCAT(camera_make, ' ', camera_model) as camera,
                 COUNT(*) as count
             FROM media
-            WHERE is_original = TRUE
+            WHERE is_final = TRUE
               AND camera_make IS NOT NULL
             GROUP BY camera_make, camera_model
             ORDER BY count DESC
@@ -386,7 +386,7 @@ def get_stats():
                 YEAR(created) as year,
                 COUNT(*) as count
             FROM media
-            WHERE is_original = TRUE
+            WHERE is_final = TRUE
               AND created IS NOT NULL
             GROUP BY YEAR(created)
             ORDER BY year DESC
@@ -483,7 +483,7 @@ def export_filtered():
         limit = min(10000, max(1, int(request.args.get('limit', 5000))))
 
         # Build WHERE clause (same logic as /api/images)
-        where_clauses = ["m.is_original = TRUE"]
+        where_clauses = ["m.is_final = TRUE"]  # Only show final images (best version)
         params = {}
         filter_info = {}
 
