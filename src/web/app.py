@@ -800,7 +800,7 @@ def get_years_months():
                 COUNT(*) as total,
                 SUM(CASE WHEN rating IS NOT NULL AND rating > 0 THEN 1 ELSE 0 END) as rated
             FROM media
-            WHERE is_original = TRUE
+            WHERE is_final = TRUE
               AND created IS NOT NULL
             GROUP BY YEAR(created), MONTH(created)
             ORDER BY year DESC, month DESC
@@ -836,7 +836,7 @@ def get_rating_queue():
     - month: Filter by month (required)
     - burst_window: Seconds to consider as burst (default 30)
     - start_from: Image ID to start from (for pagination)
-    - limit: Number of images to return (default 50)
+    - limit: Number of images to return (default 500, max 5000)
     - unrated_only: Only return unrated images (default false)
     """
     session = Session()
@@ -852,7 +852,7 @@ def get_rating_queue():
         month = int(month)
         burst_window = int(request.args.get('burst_window', 30))
         start_from = request.args.get('start_from')
-        limit = min(200, max(1, int(request.args.get('limit', 50))))
+        limit = min(5000, max(1, int(request.args.get('limit', 500))))
 
         # Build query
         where_clauses = [
@@ -978,10 +978,15 @@ def get_cached_thumbnail(image_id):
 
         storage_root, directory, filename, thumbnail_path = row
 
-        # If cached thumbnail exists, serve it
+        # If cached thumbnail exists, serve it from /thumbnails with same directory structure
         if thumbnail_path:
-            thumb_full_path = resolve_media_path(storage_root, thumbnail_path, "")
-            if Path(thumb_full_path).exists():
+            # Construct path: /thumbnails/<directory>/<filename>
+            if directory:
+                thumb_full_path = Path('/thumbnails') / directory / filename
+            else:
+                thumb_full_path = Path('/thumbnails') / filename
+
+            if thumb_full_path.exists():
                 return send_file(thumb_full_path, mimetype='image/jpeg')
 
         # Fall back to on-the-fly generation

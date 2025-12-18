@@ -267,11 +267,6 @@
         </div>
     </div>
 
-    <div class="help-panel">
-        <div><kbd>&larr;</kbd> <kbd>&rarr;</kbd> Navigate</div>
-        <div><kbd>0-5</kbd> Set rating</div>
-        <div><kbd>Esc</kbd> Exit burst view</div>
-    </div>
 </div>
 {% endblock %}
 
@@ -279,6 +274,7 @@
 const YEAR = {{ year }};
 const MONTH = {{ month }};
 const BURST_WINDOW = 30;
+const CHUNK_SIZE = 500; // Load 500 images at a time
 
 let images = [];
 let bursts = [];
@@ -287,6 +283,9 @@ let inBurstView = false;
 let selectedBurstIndex = 0;
 let autoAdvance = false;
 let unratedOnly = false;
+let isLoading = false;
+let hasMoreImages = true;
+let lastImageId = null;
 
 // Load settings
 function loadSettings() {
@@ -313,13 +312,42 @@ function renderStars(rating) {
     return '★'.repeat(rating) + '☆'.repeat(5 - rating);
 }
 
-// Load images for the month
+// Load images for the month (initial load or filter change)
 async function loadImages() {
+    // Reset pagination state
+    images = [];
+    bursts = [];
+    lastImageId = null;
+    hasMoreImages = true;
+    currentIndex = 0;
+
+    // Load first chunk
+    await loadMoreImages();
+
+    if (images.length > 0) {
+        showImage(0);
+    } else {
+        document.getElementById('imageContainer').innerHTML = '<p style="color: #999">No images found for this month</p>';
+    }
+}
+
+// Load more images (pagination)
+async function loadMoreImages() {
+    if (isLoading || !hasMoreImages) {
+        return;
+    }
+
+    isLoading = true;
+
     try {
-        let url = `/api/rating-queue?year=${YEAR}&month=${MONTH}&burst_window=${BURST_WINDOW}&limit=200`;
+        let url = `/api/rating-queue?year=${YEAR}&month=${MONTH}&burst_window=${BURST_WINDOW}&limit=${CHUNK_SIZE}`;
         if (unratedOnly) {
             url += '&unrated_only=true';
         }
+        if (lastImageId) {
+            url += `&start_from=${lastImageId}`;
+        }
+
         const response = await fetch(url);
         const data = await response.json();
 
@@ -328,26 +356,73 @@ async function loadImages() {
             return;
         }
 
-        images = data.images;
-        bursts = data.bursts;
+        if (data.images.length > 0) {
+            // Append new images
+            const startIdx = images.length;
+            images.push(...data.images);
 
-        updateProgress();
-        renderThumbnails();
+            // Update last image ID for next pagination
+            lastImageId = data.images[data.images.length - 1].id;
 
-        if (images.length > 0) {
-            showImage(0);
+            // Check if we got fewer images than requested (means no more)
+            if (data.images.length < CHUNK_SIZE) {
+                hasMoreImages = false;
+            }
+
+            // Merge bursts (recalculate across all images)
+            recalculateBursts();
+
+            updateProgress();
+            renderThumbnails();
         } else {
-            document.getElementById('imageContainer').innerHTML = '<p style="color: #999">No images found for this month</p>';
+            hasMoreImages = false;
         }
 
     } catch (error) {
-        alert('Error loading images: ' + error.message);
+        alert('Error loading more images: ' + error.message);
+    } finally {
+        isLoading = false;
+    }
+}
+
+// Recalculate bursts across all loaded images
+function recalculateBursts() {
+    bursts = [];
+    if (images.length <= 1) return;
+
+    let current_burst = [images[0]];
+    for (let i = 1; i < images.length; i++) {
+        const prev_time = images[i-1].created ? new Date(images[i-1].created) : null;
+        const curr_time = images[i].created ? new Date(images[i].created) : null;
+
+        if (prev_time && curr_time) {
+            const diff = Math.abs((curr_time - prev_time) / 1000);
+            if (diff <= BURST_WINDOW) {
+                current_burst.push(images[i]);
+            } else {
+                if (current_burst.length > 1) {
+                    bursts.push(current_burst.map(img => img.id));
+                }
+                current_burst = [images[i]];
+            }
+        } else {
+            if (current_burst.length > 1) {
+                bursts.push(current_burst.map(img => img.id));
+            }
+            current_burst = [images[i]];
+        }
+    }
+
+    // Don't forget the last burst
+    if (current_burst.length > 1) {
+        bursts.push(current_burst.map(img => img.id));
     }
 }
 
 function updateProgress() {
     const rated = images.filter(img => img.rating && img.rating > 0).length;
-    document.getElementById('progress').textContent = `${rated} / ${images.length} rated`;
+    const moreIndicator = hasMoreImages ? '+ (loading more...)' : '';
+    document.getElementById('progress').textContent = `${rated} / ${images.length}${moreIndicator} rated`;
 }
 
 function renderThumbnails() {
@@ -499,6 +574,11 @@ function navigate(direction) {
             }
         });
         updateProgress();
+    }
+
+    // Auto-load more images if we're getting close to the end
+    if (direction > 0 && currentIndex > images.length - 50 && hasMoreImages && !isLoading) {
+        loadMoreImages();
     }
 
     // Find the next burst group or single image
