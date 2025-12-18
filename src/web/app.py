@@ -101,6 +101,7 @@ try:
     # Override with environment variable if set
     if PHOTO_ROOT:
         config.web.media_root = PHOTO_ROOT
+        config.default_storage_root = PHOTO_ROOT  # Required for config_only strategy
 
     path_resolver = PathResolver(config)
     USE_PATH_RESOLVER = True
@@ -131,7 +132,9 @@ def resolve_media_path(storage_root, directory, filename):
 
     # Fallback: simple path construction using PHOTO_ROOT
     if directory:
-        return str(Path(PHOTO_ROOT) / directory / filename)
+        # Normalize separators for cross-platform compatibility
+        clean_dir = directory.replace('\\', '/')
+        return str(Path(PHOTO_ROOT) / clean_dir / filename)
     else:
         return str(Path(PHOTO_ROOT) / filename)
 
@@ -604,14 +607,14 @@ def view_image(image_id):
 
 @app.route('/api/thumbnail/<int:image_id>')
 def get_thumbnail(image_id):
-    """Generate and serve a thumbnail for an image."""
+    """Generate and serve a thumbnail for an image (checking cache first)."""
     session = Session()
 
     try:
         # Get image path components from database
         result = session.execute(
             text("""
-                SELECT storage_root, directory, filename
+                SELECT storage_root, directory, filename, thumbnail_path
                 FROM media
                 WHERE id = :id
             """),
@@ -623,7 +626,28 @@ def get_thumbnail(image_id):
             logger.warning(f"Image {image_id} not found in database")
             return "Not found", 404
 
-        storage_root, directory, filename = row
+        storage_root, directory, filename, thumbnail_path = row
+
+        # Check for cached thumbnail first
+        if thumbnail_path:
+            try:
+                # Construct path: /thumbnails/<thumbnail_path>
+                # Normalize path separators and strip leading slashes
+                clean_thumb_path = thumbnail_path.replace('\\', '/').lstrip('/')
+                thumb_full_path = Path('/thumbnails') / clean_thumb_path
+
+                if thumb_full_path.exists():
+                    return send_file(thumb_full_path, mimetype='image/jpeg')
+                else:
+                    logger.warning(f"Thumbnail recorded at {thumbnail_path} but file not found at {thumb_full_path}")
+                    return "Thumbnail file not found", 404
+            except PermissionError as e:
+                logger.error(f"Permission denied reading thumbnail at {thumb_full_path}: {e}")
+                return "Thumbnail permission denied", 403
+            except Exception as e:
+                logger.error(f"Error serving cached thumbnail {thumb_full_path}: {e}")
+                return "Error serving thumbnail", 500
+
 
         if not filename:
             logger.warning(f"No filename for image {image_id}")
@@ -665,13 +689,18 @@ def get_thumbnail(image_id):
                             as_attachment=False,
                             download_name='thumb.jpg')
 
-        except PermissionError:
-            return "Permission denied on mounted path", 403
+        except PermissionError as e:
+            logger.error(f"Permission denied reading source file at {mounted_path}: {e}")
+            return f"Permission denied reading source file: {mounted_path}", 403
+        except FileNotFoundError as e:
+            logger.warning(f"Source file not found at {mounted_path}: {e}")
+            return f"Source file not found: {mounted_path}", 404
         except UnidentifiedImageError:
             return "Unsupported image format", 415
         except rawpy.LibRawFileUnsupportedError:
             return "Unsupported RAW format", 415
         except Exception as e:
+            logger.error(f"Error generating thumbnail from {mounted_path}: {e}")
             return f"Error generating thumbnail: {e}", 500
     except Exception as e:
         logger.error(f"Error fetching thumbnail {image_id}: {e}")
@@ -958,45 +987,11 @@ def get_rating_queue():
 
 @app.route('/api/cached-thumbnail/<int:image_id>')
 def get_cached_thumbnail(image_id):
-    """Serve cached thumbnail if available, otherwise generate on-the-fly."""
-    session = Session()
-
-    try:
-        # Check for cached thumbnail
-        result = session.execute(
-            text("""
-                SELECT storage_root, directory, filename, thumbnail_path
-                FROM media
-                WHERE id = :id
-            """),
-            {'id': image_id}
-        )
-        row = result.fetchone()
-
-        if not row:
-            return "Not found", 404
-
-        storage_root, directory, filename, thumbnail_path = row
-
-        # If cached thumbnail exists, serve it from /thumbnails with same directory structure
-        if thumbnail_path:
-            # Construct path: /thumbnails/<directory>/<filename>
-            if directory:
-                thumb_full_path = Path('/thumbnails') / directory / filename
-            else:
-                thumb_full_path = Path('/thumbnails') / filename
-
-            if thumb_full_path.exists():
-                return send_file(thumb_full_path, mimetype='image/jpeg')
-
-        # Fall back to on-the-fly generation
-        return get_thumbnail(image_id)
-
-    except Exception as e:
-        logger.error(f"Error fetching cached thumbnail {image_id}: {e}")
-        return "Server error", 500
-    finally:
-        session.close()
+    """Serve cached thumbnail if available, otherwise generate on-the-fly.
+    
+    This is now just an alias for get_thumbnail which handles caching internally.
+    """
+    return get_thumbnail(image_id)
 
 
 @app.route('/rate')
