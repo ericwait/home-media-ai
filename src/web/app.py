@@ -183,8 +183,12 @@ def get_images():
             params['rating_min'] = int(rating_min)
 
         if rating_max := request.args.get('rating_max'):
-            where_clauses.append("m.rating <= :rating_max")
-            params['rating_max'] = int(rating_max)
+            r_max = int(rating_max)
+            if r_max == 0:
+                where_clauses.append("(m.rating <= :rating_max OR m.rating IS NULL)")
+            else:
+                where_clauses.append("m.rating <= :rating_max")
+            params['rating_max'] = r_max
 
         # Media type filter
         if media_type := request.args.get('media_type'):
@@ -209,10 +213,6 @@ def get_images():
         if month := request.args.get('month'):
             where_clauses.append("MONTH(m.created) = :month")
             params['month'] = int(month)
-
-        # Unrated filter
-        if request.args.get('unrated') == 'true':
-            where_clauses.append("(m.rating IS NULL OR m.rating = 0)")
 
         where_sql = " AND ".join(where_clauses)
 
@@ -503,9 +503,13 @@ def export_filtered():
             filter_info['rating_min'] = int(rating_min)
 
         if rating_max := request.args.get('rating_max'):
-            where_clauses.append("m.rating <= :rating_max")
-            params['rating_max'] = int(rating_max)
-            filter_info['rating_max'] = int(rating_max)
+            r_max = int(rating_max)
+            if r_max == 0:
+                where_clauses.append("(m.rating <= :rating_max OR m.rating IS NULL)")
+            else:
+                where_clauses.append("m.rating <= :rating_max")
+            params['rating_max'] = r_max
+            filter_info['rating_max'] = r_max
 
         # Media type filter
         if media_type := request.args.get('media_type'):
@@ -538,11 +542,6 @@ def export_filtered():
             where_clauses.append("MONTH(m.created) = :month")
             params['month'] = int(month)
             filter_info['month'] = int(month)
-
-        # Unrated filter
-        if request.args.get('unrated') == 'true':
-            where_clauses.append("(m.rating IS NULL OR m.rating = 0)")
-            filter_info['unrated'] = True
 
         where_sql = " AND ".join(where_clauses)
 

@@ -26,7 +26,7 @@
     <div class="filters">
         <div class="filter-grid">
             <div class="filter-group">
-                <label for="rating-min">Min Rating</label>
+                <label for="rating-min">Min Rating (>=)</label>
                 <select id="rating-min">
                     <option value="">Any</option>
                     <option value="1">1★</option>
@@ -37,10 +37,15 @@
                 </select>
             </div>
             <div class="filter-group">
-                <label for="unrated">Unrated</label>
-                <select id="unrated">
+                <label for="rating-max">Max Rating (<=)</label>
+                <select id="rating-max">
                     <option value="">Any</option>
-                    <option value="true">Unrated Only</option>
+                    <option value="0">0★ (Unrated)</option>
+                    <option value="1">1★</option>
+                    <option value="2">2★</option>
+                    <option value="3">3★</option>
+                    <option value="4">4★</option>
+                    <option value="5">5★</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -312,7 +317,7 @@ function updatePagination(data) {
 function applyFilters() {
     filters = {
         rating_min: document.getElementById('rating-min').value,
-        unrated: document.getElementById('unrated').value,
+        rating_max: document.getElementById('rating-max').value,
         camera_make: document.getElementById('camera').value,
         year: document.getElementById('year').value,
         month: document.getElementById('month').value,
