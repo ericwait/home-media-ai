@@ -10,7 +10,7 @@
 
 -   **Database (MariaDB):** The central source of truth. Uses computed columns and stores metadata, taxonomy, and file paths.
 -   **Python Package (`src/python/home_media_ai`):** The core logic for media scanning, importing, metadata extraction (EXIF/XMP), and querying.
--   **Web Application (`web/`):** A Flask-based web interface for browsing media, viewing dashboards, and exploring relationships.
+-   **Web Application (`src/web/`):** A Flask-based web interface for browsing media, viewing dashboards, and exploring relationships.
 -   **Legacy/Auxiliary:** `src/matlab` contains MATLAB scripts for specific processing tasks (likely legacy or specialized).
 
 ### Technologies
@@ -58,7 +58,7 @@ mysql -u user -p dbname < src/sql/02_create_media.sql
     ```
 *   **Web Interface:**
     ```bash
-    cd web
+    cd src/web
     python app.py
     # or via Docker
     docker-compose up
@@ -84,6 +84,6 @@ pytest src/python/tests/ -v
 
 *   `src/python/home_media_ai/`: Main Python package.
 *   `src/sql/`: Database DDL and migrations.
-*   `web/`: Flask web application.
+*   `src/web/`: Flask web application.
 *   `docs/`: Documentation (Schema, Config, etc.).
 *   `data/`: Working data, logs, and temporary files.

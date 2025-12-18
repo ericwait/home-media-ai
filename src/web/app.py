@@ -392,11 +392,20 @@ def get_stats():
             ORDER BY year DESC
         """)).fetchall()
 
+        # GPS count
+        gps_count = session.execute(text("""
+            SELECT COUNT(*)
+            FROM media
+            WHERE is_final = TRUE
+              AND gps_latitude IS NOT NULL
+        """)).scalar()
+
         return jsonify({
             'by_type': [{'type': r[0], 'count': r[1], 'gb': float(r[2])} for r in type_stats],
             'by_rating': [{'rating': r[0], 'count': r[1]} for r in rating_stats],
             'by_camera': [{'camera': r[0], 'count': r[1]} for r in camera_stats],
-            'by_year': [{'year': r[0], 'count': r[1]} for r in year_stats]
+            'by_year': [{'year': r[0], 'count': r[1]} for r in year_stats],
+            'gps_count': gps_count
         })
 
     except Exception as e:

@@ -1,37 +1,342 @@
 {% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .image-card.selected {
+        border: 2px solid #4a9eff;
+        box-shadow: 0 0 15px rgba(74, 158, 255, 0.5);
+        transform: translateY(-4px);
+    }
+    .pagination button.active {
+        background: #357abd;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container">
-<div class="stats-grid" id="stats">
-<div class="stat-card"><h3>Total Images</h3><div class="stat-value" id="total-images">-</div></div>
-<div class="stat-card"><h3>Storage Used</h3><div class="stat-value" id="total-storage">-</div></div>
-<div class="stat-card"><h3>Rated Images</h3><div class="stat-value" id="rated-images">-</div></div>
-<div class="stat-card"><h3>With GPS</h3><div class="stat-value" id="gps-images">-</div></div>
-</div>
-<div class="filters">
-<div class="filter-grid">
-<div class="filter-group"><label for="rating-min">Min Rating</label><select id="rating-min"><option value="">Any</option><option value="1">1★</option><option value="2">2★</option><option value="3">3★</option><option value="4">4★</option><option value="5">5★</option></select></div>
-<div class="filter-group"><label for="unrated">Unrated</label><select id="unrated"><option value="">Any</option><option value="true">Unrated Only</option></select></div>
-<div class="filter-group"><label for="camera">Camera</label><select id="camera"><option value="">All Cameras</option></select></div>
-<div class="filter-group"><label for="year">Year</label><select id="year"><option value="">All Years</option></select></div>
-<div class="filter-group"><label for="month">Month</label><select id="month"><option value="">All Months</option></select></div>
-<div class="filter-group"><label for="media-type">Type</label><select id="media-type"><option value="">All Types</option></select></div>
-<div class="filter-group"><label for="has-gps">GPS</label><select id="has-gps"><option value="">Any</option><option value="true">With GPS</option></select></div>
-</div>
-<button onclick="applyFilters()">Apply Filters</button>
-<button onclick="resetFilters()" style="background: #666; margin-left: 0.5rem;">Reset</button>
-<div style="display: inline-block; margin-left: 1rem;">
-<select id="export-format" style="padding: 0.5rem; background: #2a2a2a; color: #eee; border: 1px solid #444;">
-<option value="json">JSON (IDs)</option>
-<option value="txt">Text (Paths)</option>
-</select>
-<button onclick="exportFiltered()" style="background: #2a5; margin-left: 0.5rem;">Export</button>
-</div>
-</div>
-<div id="gallery" class="gallery"></div>
-<div class="pagination" id="pagination"></div>
+    <div class="stats-grid" id="stats">
+        <div class="stat-card"><h3>Total Images</h3><div class="stat-value" id="total-images">-</div></div>
+        <div class="stat-card"><h3>Storage Used</h3><div class="stat-value" id="total-storage">-</div></div>
+        <div class="stat-card"><h3>Rated Images</h3><div class="stat-value" id="rated-images">-</div></div>
+        <div class="stat-card"><h3>With GPS</h3><div class="stat-value" id="gps-images">-</div></div>
+    </div>
+    
+    <div class="filters">
+        <div class="filter-grid">
+            <div class="filter-group">
+                <label for="rating-min">Min Rating</label>
+                <select id="rating-min">
+                    <option value="">Any</option>
+                    <option value="1">1★</option>
+                    <option value="2">2★</option>
+                    <option value="3">3★</option>
+                    <option value="4">4★</option>
+                    <option value="5">5★</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="unrated">Unrated</label>
+                <select id="unrated">
+                    <option value="">Any</option>
+                    <option value="true">Unrated Only</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="camera">Camera</label>
+                <select id="camera">
+                    <option value="">All Cameras</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="year">Year</label>
+                <select id="year">
+                    <option value="">All Years</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="month">Month</label>
+                <select id="month">
+                    <option value="">All Months</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="media-type">Type</label>
+                <select id="media-type">
+                    <option value="">All Types</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="has-gps">GPS</label>
+                <select id="has-gps">
+                    <option value="">Any</option>
+                    <option value="true">With GPS</option>
+                </select>
+            </div>
+        </div>
+        
+        <button onclick="applyFilters()">Apply Filters</button>
+        <button onclick="resetFilters()" style="background: #666; margin-left: 0.5rem;">Reset</button>
+        
+        <div style="display: inline-block; margin-left: 1rem;">
+            <select id="export-format" style="padding: 0.5rem; background: #2a2a2a; color: #eee; border: 1px solid #444;">
+                <option value="json">JSON (IDs)</option>
+                <option value="txt">Text (Paths)</option>
+            </select>
+            <button onclick="exportFiltered()" style="background: #2a5; margin-left: 0.5rem;">Export</button>
+        </div>
+    </div>
+    
+    <div id="gallery" class="gallery"></div>
+    <div class="pagination" id="pagination"></div>
 </div>
 {% endblock %}
+
 {% block extra_js %}
-const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
-let currentPage=1,filters={};document.addEventListener('DOMContentLoaded',()=>{loadStats();loadFilterOptions();loadImages()});async function loadStats(){try{const response=await fetch('/api/stats'),data=await response.json(),totalImages=data.by_type.reduce((sum,t)=>sum+t.count,0);document.getElementById('total-images').textContent=totalImages.toLocaleString();const totalGB=data.by_type.reduce((sum,t)=>sum+t.gb,0);document.getElementById('total-storage').textContent=totalGB.toFixed(1)+' GB';const ratedCount=data.by_rating.filter(r=>r.rating>=0).reduce((sum,r)=>sum+r.count,0);document.getElementById('rated-images').textContent=ratedCount.toLocaleString();document.getElementById('gps-images').textContent=data.gps_count.toLocaleString()}catch(error){console.error('Error loading stats:',error)}}async function loadFilterOptions(){try{const response=await fetch('/api/filters'),data=await response.json(),cameraSelect=document.getElementById('camera');data.cameras.forEach(camera=>{const option=document.createElement('option');option.value=camera;option.textContent=camera;cameraSelect.appendChild(option)});const yearSelect=document.getElementById('year');data.years.forEach(year=>{const option=document.createElement('option');option.value=year;option.textContent=year;yearSelect.appendChild(option)});const monthSelect=document.getElementById('month');data.months.forEach(month=>{const option=document.createElement('option');option.value=month;option.textContent=MONTH_NAMES[month-1];monthSelect.appendChild(option)});const typeSelect=document.getElementById('media-type');data.media_types.forEach(type=>{const option=document.createElement('option');option.value=type;option.textContent=type;typeSelect.appendChild(option)})}catch(error){console.error('Error loading filter options:',error)}}async function loadImages(page=1){currentPage=page;const params=new URLSearchParams({page:page,per_page:50,...filters});try{document.getElementById('gallery').innerHTML='<div class="loading">Loading images...</div>';const response=await fetch(`/api/images?${params}`),data=await response.json(),gallery=document.getElementById('gallery');gallery.innerHTML='';if(data.images.length===0){gallery.innerHTML='<div class="loading">No images found matching your filters</div>';return}data.images.forEach(image=>{const card=document.createElement('div');card.className='image-card';card.style.cursor='pointer';card.onclick=()=>window.open('/view/'+image.id,'_blank');const rating=image.rating?'★'.repeat(image.rating)+'☆'.repeat(5-image.rating):'Not rated';card.innerHTML=`<img src="/api/thumbnail/${image.id}" alt="Image ${image.id}" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'250\\' height=\\'200\\'%3E%3Crect fill=\\'%23333\\' width=\\'250\\' height=\\'200\\'/%3E%3Ctext fill=\\'%23666\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dy=\\'.3em\\' font-family=\\'sans-serif\\'%3ENo Preview%3C/text%3E%3C/svg%3E'"><div class="image-info"><div class="image-rating">${rating}</div><div class="image-meta">${image.camera_make||'Unknown'}<br>${image.width}×${image.height} | ${image.media_type}</div></div>`;gallery.appendChild(card)});renderPagination(data.page,data.pages)}catch(error){console.error('Error loading images:',error);document.getElementById('gallery').innerHTML='<div class="loading">Error loading images. Check console for details.</div>'}}function renderPagination(currentPage,totalPages){const pagination=document.getElementById('pagination');pagination.innerHTML='';const prevBtn=document.createElement('button');prevBtn.textContent='← Previous';prevBtn.disabled=currentPage===1;prevBtn.onclick=()=>loadImages(currentPage-1);pagination.appendChild(prevBtn);const pageInfo=document.createElement('span');pageInfo.textContent=`Page ${currentPage} of ${totalPages}`;pageInfo.style.padding='0.5rem 1rem';pageInfo.style.color='#999';pagination.appendChild(pageInfo);const nextBtn=document.createElement('button');nextBtn.textContent='Next →';nextBtn.disabled=currentPage===totalPages;nextBtn.onclick=()=>loadImages(currentPage+1);pagination.appendChild(nextBtn)}function applyFilters(){filters={};const ratingMin=document.getElementById('rating-min').value;if(ratingMin)filters.rating_min=ratingMin;const unrated=document.getElementById('unrated').value;if(unrated)filters.unrated=unrated;const camera=document.getElementById('camera').value;if(camera)filters.camera_make=camera;const year=document.getElementById('year').value;if(year)filters.year=year;const month=document.getElementById('month').value;if(month)filters.month=month;const mediaType=document.getElementById('media-type').value;if(mediaType)filters.media_type=mediaType;const hasGPS=document.getElementById('has-gps').value;if(hasGPS)filters.has_gps=hasGPS;loadImages(1)}function resetFilters(){document.getElementById('rating-min').value='';document.getElementById('unrated').value='';document.getElementById('camera').value='';document.getElementById('year').value='';document.getElementById('month').value='';document.getElementById('media-type').value='';document.getElementById('has-gps').value='';filters={};loadImages(1)}async function exportFiltered(){const format=document.getElementById('export-format').value;const params=new URLSearchParams({format:format,...filters});try{const response=await fetch(`/api/export?${params}`);if(!response.ok){alert('Error exporting data: '+response.statusText);return}if(format==='json'){const data=await response.json();const compactJson='{\n  "filter": '+JSON.stringify(data.filter)+',\n  "total_count": '+data.total_count+',\n  "exported_at": "'+data.exported_at+'",\n  "image_ids": '+JSON.stringify(data.image_ids)+'\n}';const blob=new Blob([compactJson],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`export_${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(url)}else{const text=await response.text();const blob=new Blob([text],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`export_${new Date().toISOString().split('T')[0]}.txt`;a.click();URL.revokeObjectURL(url)}}catch(error){console.error('Error exporting:',error);alert('Error exporting data. Check console for details.')}}
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+let currentPage = 1;
+let filters = {};
+let selectedImageId = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+    loadFilterOptions();
+    loadImages();
+    
+    // Global keyboard listener for rating
+    document.addEventListener('keydown', handleKeydown);
+});
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        
+        const totalImages = data.by_type.reduce((sum, t) => sum + t.count, 0);
+        document.getElementById('total-images').textContent = totalImages.toLocaleString();
+        
+        const totalGB = data.by_type.reduce((sum, t) => sum + t.gb, 0);
+        document.getElementById('total-storage').textContent = totalGB.toFixed(1) + ' GB';
+        
+        const ratedCount = data.by_rating.filter(r => r.rating >= 0).reduce((sum, r) => sum + r.count, 0);
+        document.getElementById('rated-images').textContent = ratedCount.toLocaleString();
+        
+        if (data.gps_count) {
+            document.getElementById('gps-images').textContent = data.gps_count.toLocaleString();
+        } else {
+             // Fallback if gps_count is not explicitly in api response structure I saw earlier
+             // Actually I saw document.getElementById('gps-images').textContent=data.gps_count.toLocaleString() in the minified code
+             // So I assume it is there.
+             // But looking at app.py get_stats(), it returns 'by_type', 'by_rating', 'by_camera', 'by_year'.
+             // It does NOT seem to return 'gps_count'.
+             // Wait, let me check app.py again.
+             // Ah, I missed it? No, get_stats in app.py does NOT calculate gps_count.
+             // But the minified JS code was using `data.gps_count`.
+             // Maybe `gps_count` was added to `app.py` but I missed it in the file read?
+             // Or maybe the minified JS was from an older version or I misread it?
+             // "document.getElementById('gps-images').textContent=data.gps_count.toLocaleString()"
+             // I will leave it for now, if it's undefined it will show blank or undefined.
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+async function loadFilterOptions() {
+    try {
+        const response = await fetch('/api/filters');
+        const data = await response.json();
+        
+        const cameraSelect = document.getElementById('camera');
+        data.cameras.forEach(camera => {
+            const option = document.createElement('option');
+            option.value = camera;
+            option.textContent = camera;
+            cameraSelect.appendChild(option);
+        });
+        
+        const yearSelect = document.getElementById('year');
+        data.years.forEach(year => {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+        });
+        
+        const monthSelect = document.getElementById('month');
+        data.months.forEach(month => {
+            const option = document.createElement('option');
+            option.value = month;
+            option.textContent = MONTH_NAMES[month - 1];
+            monthSelect.appendChild(option);
+        });
+        
+        const typeSelect = document.getElementById('media-type');
+        data.media_types.forEach(type => {
+            const option = document.createElement('option');
+            option.value = type;
+            option.textContent = type;
+            typeSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading filter options:', error);
+    }
+}
+
+async function loadImages(page = 1) {
+    currentPage = page;
+    const params = new URLSearchParams({ page: page, per_page: 50, ...filters });
+    
+    const gallery = document.getElementById('gallery');
+    gallery.innerHTML = '<div class="loading">Loading...</div>';
+    
+    try {
+        const response = await fetch(`/api/images?${params}`);
+        const data = await response.json();
+        
+        if (!data.images || data.images.length === 0) {
+            gallery.innerHTML = '<div class="loading">No images found</div>';
+            document.getElementById('pagination').innerHTML = '';
+            return;
+        }
+        
+        gallery.innerHTML = data.images.map(img => `
+            <div class="image-card ${selectedImageId === img.id ? 'selected' : ''}" 
+                 data-id="${img.id}"
+                 onclick="selectImage(${img.id})"
+                 ondblclick="window.location.href='/view/${img.id}'">
+                <img src="/api/thumbnail/${img.id}" loading="lazy" alt="Image ${img.id}">
+                <div class="image-info">
+                    <div class="image-rating" id="rating-${img.id}">
+                        ${renderStars(img.rating)}
+                    </div>
+                    <div class="image-meta">
+                        ${img.camera_make || ''} ${img.camera_model || ''}<br>
+                        ${img.created ? new Date(img.created).toLocaleDateString() : 'Unknown Date'}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+        updatePagination(data);
+    } catch (error) {
+        console.error('Error loading images:', error);
+        gallery.innerHTML = '<div class="loading">Error loading images</div>';
+    }
+}
+
+function renderStars(rating) {
+    const r = rating || 0;
+    return '★'.repeat(r) + '☆'.repeat(5 - r);
+}
+
+function selectImage(id) {
+    selectedImageId = id;
+    document.querySelectorAll('.image-card').forEach(card => {
+        if (parseInt(card.dataset.id) === id) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+}
+
+async function handleKeydown(e) {
+    // Ignore if typing in an input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+    if (!selectedImageId) return;
+    
+    const key = e.key;
+    // Allow 0-5
+    if (['0', '1', '2', '3', '4', '5'].includes(key)) {
+        await rateImage(selectedImageId, parseInt(key));
+    }
+}
+
+async function rateImage(id, rating) {
+    try {
+        const response = await fetch(`/api/rating/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rating: rating })
+        });
+        
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+
+        if (response.ok) {
+            // Update UI
+            const ratingEl = document.getElementById(`rating-${id}`);
+            if (ratingEl) {
+                ratingEl.innerHTML = renderStars(rating);
+            }
+        } else {
+            console.error('Failed to rate image');
+        }
+    } catch (error) {
+        console.error('Error rating image:', error);
+    }
+}
+
+function updatePagination(data) {
+    const pagination = document.getElementById('pagination');
+    let html = '';
+    
+    if (data.page > 1) {
+        html += `<button onclick="loadImages(${data.page - 1})">Previous</button>`;
+    }
+    
+    // Show some page numbers
+    const startPage = max(1, data.page - 2);
+    const endPage = min(data.pages, data.page + 2);
+    
+    // Helper min/max
+    function max(a, b) { return a > b ? a : b; }
+    function min(a, b) { return a < b ? a : b; }
+
+    for (let i = startPage; i <= endPage; i++) {
+        html += `<button onclick="loadImages(${i})" class="${i === data.page ? 'active' : ''}">${i}</button>`;
+    }
+    
+    if (data.page < data.pages) {
+        html += `<button onclick="loadImages(${data.page + 1})">Next</button>`;
+    }
+    
+    pagination.innerHTML = html;
+}
+
+function applyFilters() {
+    filters = {
+        rating_min: document.getElementById('rating-min').value,
+        unrated: document.getElementById('unrated').value,
+        camera_make: document.getElementById('camera').value,
+        year: document.getElementById('year').value,
+        month: document.getElementById('month').value,
+        media_type: document.getElementById('media-type').value,
+        has_gps: document.getElementById('has-gps').value
+    };
+    
+    // Clean empty filters
+    Object.keys(filters).forEach(key => {
+        if (!filters[key]) delete filters[key];
+    });
+    
+    loadImages(1);
+}
+
+function resetFilters() {
+    document.querySelectorAll('.filters select').forEach(select => select.value = '');
+    filters = {};
+    loadImages(1);
+}
+
+function exportFiltered() {
+    const format = document.getElementById('export-format').value;
+    const params = new URLSearchParams({ ...filters, format: format });
+    window.location.href = `/api/export?${params}`;
+}
 {% endblock %}
