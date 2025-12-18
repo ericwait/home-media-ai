@@ -16,5 +16,6 @@
     "python.analysis.extraPaths": [
         "./src/python",
     ],
-    "python.defaultInterpreterPath": "D:\\mamba_envs\\home-media-ai-stable\\python.exe"
+    "python.defaultInterpreterPath": "D:\\mamba_envs\\home-media-ai-stable\\python.exe",
+    "python.languageServer": "None"
 }

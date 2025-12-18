@@ -30,6 +30,25 @@
             "stopOnEntry": false,
             "logToFile": true,
             "showReturnValue": true
-        }
+        },
+        {
+            "name": "Python Debugger: generate_thumbnails",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/python/scripts/generate_thumbnails.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--limit",
+                "100"
+            ],
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src/python"
+            },
+            "cwd": "${workspaceFolder}/src/python",
+            "stopOnEntry": false,
+            "logToFile": true,
+            "showReturnValue": true
+        },
     ]
 }
