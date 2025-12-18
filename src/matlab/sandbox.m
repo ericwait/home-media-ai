@@ -1,7 +1,7 @@
 %% User Settings
 
 maxSize = 1024;
-dateStart = datetime(2025,01,01);
+dateStart = datetime(1900,01,01);
 dateEnd   = datetime(2026,01,01);
 
 %% Make connection to database
@@ -56,6 +56,10 @@ parfor r = 1:length(indexList)
         continue
     end
 
+    if strcmpi(fileExt, '.avi') || strcmpi(fileExt, '.mp4')
+        warning(sprintf('Skipping video %s', filePathIn))
+        continue
+    end
     try
         im = im2uint8(imread(filePathIn));
     catch exception
