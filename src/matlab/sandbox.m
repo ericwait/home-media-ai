@@ -1,7 +1,7 @@
 %% User Settings
 
 maxSize = 1024;
-dateStart = datetime(1900,01,01);
+dateStart = datetime(2025,10,01);
 dateEnd   = datetime(2026,01,01);
 
 %% Make connection to database
@@ -35,22 +35,23 @@ tumbDir = '\\tiger\docker\home-media-viewer\thumbnails';
 
 q = parallel.pool.DataQueue;
 afterEach(q, @(x)(fprintf('%d, ', x)));
-indexList = find(data.created >= dateStart & data.created <= dateEnd & data.is_removed==0);
-parfor r = 1:length(indexList)
-    rowIndex = indexList(r);
-    if mod(rowIndex, 1e3) ==0
-        send(q, rowIndex);
-    end
-    if rowIndex == 76768
-        continue
-    end
+dataMask = data.created >= dateStart & data.created <= dateEnd & data.is_removed==0;
+dataFiltered = data(dataMask,:);
+parfor rowIndex = 1:size(dataFiltered,1)
+    % rowIndex = indexList(r);
+    % if mod(rowIndex, 1e3) ==0
+    %     send(q, rowIndex);
+    % end
+    % if rowIndex == 76768
+    %     continue
+    % end
 
-    filePathIn  = fullfile(rawDir, data.directory{rowIndex}, data.filename{rowIndex});
-    filePathOut = fullfile(tumbDir, data.directory{rowIndex});
+    filePathIn  = fullfile(rawDir, dataFiltered.directory{rowIndex}, dataFiltered.filename{rowIndex});
+    filePathOut = fullfile(tumbDir, dataFiltered.directory{rowIndex});
     if ~exist(filePathOut, "dir")
         mkdir(filePathOut);
     end
-    [~, fileName, fileExt] = fileparts(data.filename{rowIndex});
+    [~, fileName, fileExt] = fileparts(dataFiltered.filename{rowIndex});
     filePathOut = fullfile(filePathOut, [fileName, '_thumb.jpg']);
     if exist(filePathOut, "file")
         continue

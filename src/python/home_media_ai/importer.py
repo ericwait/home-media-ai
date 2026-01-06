@@ -111,7 +111,9 @@ class MediaImporter:
         """
         try:
             file_hash = calculate_file_hash(file_info.path)
-        except OSError:
+        except OSError as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to calculate hash for {file_info.path}: {e}")
             return None, False
 
         # Split the file path into components
@@ -129,6 +131,7 @@ class MediaImporter:
             storage_root=storage_root,
             directory=directory,
             filename=filename,
+            file_path=file_info.path,
             file_hash=file_hash,
             file_size=file_info.size,
             file_ext=file_info.extension,
@@ -155,7 +158,9 @@ class MediaImporter:
             # Generate thumbnail for newly imported media
             self._generate_thumbnail_for_media(media)
             return media, True  # Newly created
-        except IntegrityError:
+        except IntegrityError as e:
+            import logging
+            logging.getLogger(__name__).error(f"IntegrityError for {filename}: {e}")
             self.session.rollback()
             return self._file_exists_in_db(file_hash, filename), False
 
@@ -238,6 +243,7 @@ class MediaImporter:
                     storage_root  = storage_root,
                     directory     = directory,
                     filename      = filename,
+                    file_path     = file_info.path,
                     file_hash     = file_hash,
                     file_size     = file_info.size,
                     file_ext      = file_info.extension,

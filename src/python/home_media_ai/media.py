@@ -118,7 +118,7 @@ class Media(Base):
     directory   : Mapped[str] = mapped_column(String(500), nullable=True)
     filename    : Mapped[str] = mapped_column(String(255), nullable=False)
     # Deprecated column - will be removed after migration
-    # file_path     = Column(String(500), nullable=True)
+    file_path    : Mapped[str] = mapped_column(String(500), nullable=True)
     file_hash    : Mapped[str]      = mapped_column(String(64), nullable=False, unique=True)
     file_size    : Mapped[int]      = mapped_column(BigInteger, nullable=False)
     file_ext     : Mapped[str]      = mapped_column(String(10), nullable=False)

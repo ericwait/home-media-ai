@@ -398,7 +398,13 @@ class ExifExtractor:
                 d, m, s = value
                 return float(d) + float(m) / 60.0 + float(s) / 3600.0
 
+            def is_scalar(value):
+                return isinstance(value, (int, float, bool, type(None)))
+
             gps_data = {}
+
+            if is_scalar(gps_info):
+                return None
 
             if 1 in gps_info and 2 in gps_info:  # Latitude
                 lat = convert_to_degrees(gps_info[2])

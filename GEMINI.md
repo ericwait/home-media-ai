@@ -32,6 +32,8 @@ mamba env create -f environment.yml
 mamba activate home-media-ai-stable
 ```
 
+**Note:** When executing Python scripts directly, use the full path to the interpreter: `D:\mamba_envs\home-media-ai-stable\python.exe`
+
 ### 2. Configuration
 
 The system relies on a `config.yaml` file to handle cross-platform path resolution (mapping NAS paths to local mount points).
