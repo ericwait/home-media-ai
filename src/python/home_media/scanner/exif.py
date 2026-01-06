@@ -100,14 +100,18 @@ def extract_exif_metadata(file_path: Path) -> Optional[ExifData]:
         logger.warning("File not found or not a file: %s", file_path)
         return None
 
+    if file_path.stat().st_size == 0:
+        logger.warning("File is empty (0 bytes): %s", file_path)
+        return None
+
     # Determine file type and use appropriate extraction method
     from home_media.models.enums import FileFormat
 
     file_format = FileFormat.from_filename(file_path.name)
 
     try:
-        # For RAW files, use exifread
-        if file_format.is_raw:
+        # For RAW files and HEIC/HEIF (which Pillow often can't handle without plugins), use exifread
+        if file_format.is_raw or file_format in (FileFormat.HEIC, FileFormat.HEIF):
             return _extract_with_exifread(file_path)
         # For standard formats, use Pillow
         else:
@@ -210,8 +214,8 @@ def _extract_with_pillow(file_path: Path) -> Optional[ExifData]:
         with Image.open(file_path) as img:
             exif_data = img.getexif()
 
-            if not exif_data:
-                logger.debug("No EXIF data found in %s", file_path)
+            if not exif_data or isinstance(exif_data, int):
+                logger.debug("No valid EXIF data found in %s", file_path)
                 return None
 
             # Parse standard EXIF tags
@@ -220,8 +224,15 @@ def _extract_with_pillow(file_path: Path) -> Optional[ExifData]:
             # Extract GPS data if present
             gps_latitude, gps_longitude = None, None
             if "GPSInfo" in exif_dict:
-                gps_info = {GPSTAGS.get(tag_id, tag_id): value for tag_id, value in exif_dict["GPSInfo"].items()}
-                gps_latitude, gps_longitude = _parse_gps_coords(gps_info)
+                gps_raw = exif_dict["GPSInfo"]
+                if isinstance(gps_raw, dict) or hasattr(gps_raw, "items"):
+                    try:
+                        gps_info = {GPSTAGS.get(tag_id, tag_id): value for tag_id, value in gps_raw.items()}
+                        gps_latitude, gps_longitude = _parse_gps_coords(gps_info)
+                    except Exception as e:
+                        logger.debug("Failed to process GPSInfo dict: %s", e)
+                else:
+                    logger.debug("GPSInfo is not a dict (type: %s), skipping GPS extraction.", type(gps_raw))
 
             # Parse datetime
             captured_at = _parse_datetime(

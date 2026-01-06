@@ -53,7 +53,7 @@ class FileFormat(Enum):
 
     # Metadata/sidecar formats
     XMP = "xmp"
-    THM = "thm"      # Thumbnail file
+    THM = "thm"      # Thumbnail file (Ignored for now)
 
     # Video formats (for future use)
     MP4 = "mp4"
@@ -134,7 +134,8 @@ class FileFormat(Enum):
     @property
     def is_sidecar(self) -> bool:
         """Check if this format is a sidecar/metadata format."""
-        return self in (FileFormat.XMP, FileFormat.THM)
+        # THM ignored for now as we don't handle video
+        return self in (FileFormat.XMP,)
 
     @property
     def is_video(self) -> bool:
