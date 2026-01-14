@@ -75,6 +75,13 @@ def sync_rating_to_file(
         # Determine sync method based on file type
         ext = media.file_ext.lower()
 
+        # Check existing rating in file
+        current_file_rating = read_rating_from_file(file_path)
+        
+        if current_file_rating == rating:
+            logger.info(f"Rating already {rating} in file: {file_path.name}. Skipping write.")
+            return True
+
         if ext in ('.jpg', '.jpeg', '.tiff', '.tif'):
             # Write to EXIF
             success = _write_rating_to_exif(file_path, rating)
@@ -133,7 +140,17 @@ def _write_rating_to_exif(file_path: Path, rating: int) -> bool:
 
         # Re-save image with updated EXIF
         img = Image.open(file_path)
-        img.save(str(file_path), exif=exif_bytes, quality='keep')
+        
+        try:
+            # Try to preserve original quality
+            if img.format == 'JPEG':
+                img.save(str(file_path), exif=exif_bytes, quality='keep')
+            else:
+                # If not detected as JPEG, force JPEG save with high quality
+                img.save(str(file_path), 'JPEG', exif=exif_bytes, quality=95)
+        except Exception:
+            # Fallback if 'keep' fails
+            img.save(str(file_path), 'JPEG', exif=exif_bytes, quality=95)
 
         return True
 
@@ -149,6 +166,7 @@ def _write_rating_to_xmp_sidecar(file_path: Path, rating: int) -> bool:
     """Write rating to XMP sidecar file.
 
     Creates or updates an XMP sidecar file with the rating.
+    Uses the format: filename.ext.xmp (e.g. image.dng.xmp)
 
     Args:
         file_path: Path to the original media file.
@@ -158,8 +176,9 @@ def _write_rating_to_xmp_sidecar(file_path: Path, rating: int) -> bool:
         True if successful, False otherwise.
     """
     try:
-        # XMP sidecar path (same name, .xmp extension)
-        xmp_path = file_path.with_suffix('.xmp')
+        # XMP sidecar path (append .xmp extension)
+        # e.g., image.dng -> image.dng.xmp
+        xmp_path = file_path.with_suffix(file_path.suffix + '.xmp')
 
         if xmp_path.exists():
             # Update existing XMP file
@@ -248,9 +267,15 @@ def read_rating_from_file(
             return rating
 
     # Try XMP sidecar
-    xmp_path = file_path.with_suffix('.xmp')
+    # Check for appended extension first (standard for this project)
+    xmp_path = file_path.with_suffix(file_path.suffix + '.xmp')
     if xmp_path.exists():
         return _read_rating_from_xmp(xmp_path)
+
+    # Fallback to replaced extension (legacy/alternative)
+    xmp_path_legacy = file_path.with_suffix('.xmp')
+    if xmp_path_legacy.exists():
+        return _read_rating_from_xmp(xmp_path_legacy)
 
     return None
 
