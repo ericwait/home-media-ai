@@ -9,14 +9,9 @@ minRating = 4;
 conn = database('mariaDB');
 
 % Set query to execute on the database
-query = sprintf(['SELECT id, ' ...
-    '   created, ' ...
-    '\tfile_ext, ' ...
-    '   directory, ' ...
-    '\tfilename, ' ...
-    '   rating ' ...
+query = sprintf(['SELECT id, created, file_ext, directory, filename, rating ' ...
     'FROM home_media_ai.media ' ...
-    'WHERE created >= \'%s\' AND created < \'%s\' ' ...
+    'WHERE created >= ''%s'' AND created < ''%s'' ' ...
     'AND rating >= %d ' ...
     'AND is_removed = 0'], ...
     string(dateStart, 'yyyy-MM-dd'), ...
@@ -32,24 +27,58 @@ close(conn);
 % Clear variables
 clear conn query
 
-%% Process Images
 if isempty(data)
     disp('No images found matching criteria.');
     return;
 end
 
-fprintf('Found %d images to process.\n', height(data));
+% --- Prioritize JPGs for identical timestamps/filenames ---
+% 1. Ensure 'created' is datetime for reliable sorting
+if iscell(data.created)
+    % MariaDB might return strings
+    try
+        data.created = datetime(data.created);
+    catch
+        data.created = datetime(data.created, 'InputFormat', 'yyyy-MM-dd HH:mm:ss');
+    end
+end
 
-% Use parallel pool if available, otherwise regular for loop
-% Checking for parallel pool (optional, matching sandbox style)
-% q = parallel.pool.DataQueue;
-% afterEach(q, @(x)(fprintf('%d, ', x)));
+% 2. Extract base filenames and extension priority
+[~, baseNames, ~] = cellfun(@fileparts, data.filename, 'UniformOutput', false);
+data.base_name = baseNames;
 
-% Loop through data
-for rowIndex = 1:height(data)
-    % Progress indication
+% Priority: JPG/JPEG = 1, others = 2
+isJpg = strcmpi(data.file_ext, '.jpg') | strcmpi(data.file_ext, '.jpeg');
+data.priority = 2 - isJpg; 
+
+% 3. Sort so JPGs come first for each (created, base_name) pair
+data = sortrows(data, {'created', 'base_name', 'priority'});
+
+% 4. Keep only the first (best) version for each unique photo
+[~, uniqueIdx] = unique(data(:, {'created', 'base_name'}), 'stable');
+data = data(uniqueIdx, :);
+
+numImages = height(data);
+fprintf('Found %d unique images to process.\n', numImages);
+
+%% Process Images
+
+% Setup parallel pool and data queue for progress
+try
+    pool = gcp; % Get current pool or create one
+catch
+    warning('Unable to start parallel pool. Running in serial might fail if parfor is used.');
+end
+
+q = parallel.pool.DataQueue;
+afterEach(q, @(idx) fprintf('Processed up to index: %d\n', idx));
+
+% Loop through data in parallel
+parfor rowIndex = 1:numImages
+% for rowIndex = 1:numImages
+    % Send progress update every 10 images
     if mod(rowIndex, 10) == 0
-        fprintf('Processing %d / %d\n', rowIndex, height(data));
+        send(q, rowIndex);
     end
 
     row = data(rowIndex, :);
@@ -57,7 +86,7 @@ for rowIndex = 1:height(data)
     % Skip videos
     fileExt = row.file_ext{1};
     if strcmpi(fileExt, '.avi') || strcmpi(fileExt, '.mp4') || strcmpi(fileExt, '.mov')
-        fprintf('Skipping video: %s\n', row.filename{1});
+        % fprintf('Skipping video: %s\n', row.filename{1});
         continue;
     end
 
@@ -86,7 +115,7 @@ for rowIndex = 1:height(data)
         % If it's already a datetime object
         creationDate = rawDate;
     else
-        warning('Unknown date format for %s', row.filename{1});
+        % warning('Unknown date format for %s', row.filename{1});
         continue;
     end
     
@@ -96,8 +125,9 @@ for rowIndex = 1:height(data)
     destDir = fullfile(outputBaseDir, monthStr, ratingStr);
     
     % Ensure destination directory exists
+    % Use [~,~] = mkdir(...) to suppress warnings if it already exists
     if ~exist(destDir, 'dir')
-        mkdir(destDir);
+        [~, ~, ~] = mkdir(destDir);
     end
     
     % Destination filename (change extension to .jpg)
@@ -116,6 +146,25 @@ for rowIndex = 1:height(data)
         % Read image
         im = imread(filePathIn);
         
+        % Handle orientation
+        try
+            % Suppress warnings (e.g. XMP compliance) during metadata read
+            origWarn = warning('off', 'all');
+            try
+                info = imfinfo(filePathIn);
+            catch
+                info = [];
+            end
+            warning(origWarn);
+            
+            if ~isempty(info) && isfield(info, 'Orientation')
+                im = orientImage(im, info.Orientation);
+            end
+        catch err
+            warning(err.message)
+            % If reading metadata fails, proceed with unrotated image
+        end
+        
         % Ensure uint8
         im = im2uint8(im);
         
@@ -123,7 +172,7 @@ for rowIndex = 1:height(data)
         imwrite(im, filePathOut, 'jpg', 'Quality', 95);
         
     catch exception
-        warning('Unable to process %s: %s', filePathIn, exception.message);
+        % warning('Unable to process %s: %s', filePathIn, exception.message);
     end
 end
 
