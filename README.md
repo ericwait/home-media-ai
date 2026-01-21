@@ -1,14 +1,89 @@
-# home-media
+# home-media-ai
 
-AI-powered home media management and classification system for working with images and video to classify and judge the content within.
+AI-powered home media management and classification system.
 
-## Project Approach
+[![Tests](https://github.com/ericwait/home-media-ai/actions/workflows/tests.yml/badge.svg)](https://github.com/ericwait/home-media-ai/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/badge/coverage-77%25-green)](htmlcov/index.html)
+[![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
 
-This project is being built **incrementally and deliberately** - taking a slow, thoughtful approach to ensure stability and meaningful solutions. Each component is developed in bite-sized pieces that can be understood, tested, and refined before moving forward.
+## 1. Project Vision & Architecture
+**Goal:** To build a distributed, private, AI-powered system for indexing, classifying, and curating a multi-terabyte home media collection. The system emphasizes "pixel-wise" understanding (segmentation), taxonomy management, and high-performance retrieval without relying on cloud services.
 
-## Core Concepts
+### The "3-Node" Distributed Architecture
+The system is split across three hardware nodes to balance storage capacity, always-on availability, and on-demand compute power.
 
-### Image vs ImageFile
+1.  **The Server (MacBook Pro):**
+    * **Role:** The "Brain" and User Interface. Always-on (or wake-on-lan).
+    * **Storage:** NVMe (Fast DB access) + DAS (Thumbnails/Proxies).
+    * **Responsibilities:** Hosting the Web UI, API, Database, and Job Queue.
+2.  **The Vault (Synology NAS):**
+    * **Role:** The "Library."
+    * **Storage:** Spinning Disks (3.7 TB+).
+    * **Responsibilities:** Storing the master RAW/JPEG files. Mounted via SMB/NFS to other nodes. Read-only for most processes; "Write-back" operations are strictly controlled via the API.
+3.  **The Worker (Alienware Laptop):**
+    * **Role:** The "Muscle." On-demand.
+    * **Hardware:** NVIDIA GPU.
+    * **Responsibilities:** Running heavy AI inference (YOLO, SAM-2, CLIP). Connects to the Server to pull jobs, processes images from the Vault, and returns metadata/masks to the Server.
+
+### The Tech Stack
+* **Core Library:** `home-media` (Python 3.11)
+* **Database:** PostgreSQL (with `pgvector` for embeddings and `ltree` for taxonomy).
+* **Backend API:** FastAPI (Python).
+* **Frontend:** React (Vite).
+* **Message Queue:** Redis (Connects the Mac Server to the Alienware Worker).
+* **AI Models:**
+    * **Detection/Segmentation:** YOLOv8/v11 or SAM-2.
+    * **Embeddings:** CLIP (for semantic search).
+    * **Taxonomy:** Custom graph logic implemented via Postgres `ltree`.
+
+---
+
+## 2. Implementation Roadmap
+The project is executed in prioritized phases. We are currently transitioning from Phase 0 to Phase 1.
+
+* **Phase 0: Infrastructure (Done/In Progress)**
+    * Set up `home-media` library structure.
+    * Define core data models (`Image`, `ImageFile`).
+    * Implement basic file scanning logic.
+* **Phase 1: The Basic Viewer (Current Focus)**
+    * **Goal:** A fast, date-based web gallery running on the Mac.
+    * **Task:** Use `home-media` scanner to populate Postgres.
+    * **Task:** Build FastAPI endpoints for `GET /images` and thumbnails.
+    * **Task:** Build React Frontend for infinite scroll grid.
+* **Phase 2: Metadata & Ratings**
+    * **Goal:** User curation (Ratings, Location).
+    * **Task:** Implement "Write-back" logic (API -> ExifTool -> NAS Sidecar).
+* **Phase 3: The "Muscle" & Object Masks**
+    * **Goal:** Pixel-wise segmentation using the Alienware.
+    * **Task:** Build the Redis Worker script using PyTorch/CUDA.
+    * **Task:** Store RLE (Run-Length Encoded) masks in Postgres/DAS.
+* **Phase 4: Graph Inspection & Taxonomy**
+    * **Goal:** "Show me all Trucks" or "Show me Zoey."
+    * **Task:** Implement recursive `ltree` queries.
+    * **Task:** Train/Fine-tune embeddings for specific entities (e.g., Zoey the dog).
+* **Phase 5: Refinement**
+    * **Goal:** Correcting AI mistakes via UI.
+    * **Task:** Build visual mask editor and label correction tools.
+
+---
+
+## 3. Current Library Implementation (`home-media`)
+The `home-media` Python library is the foundation of this system. It is currently designed to be imported by the future API and Worker scripts to handle the low-level file operations.
+
+### Key Components
+* **Technology Stack**: Python 3.11 (Conda/Mamba), Pandas, Pillow, ExifRead, Pytest.
+* **Data Models (`src/python/home_media/models`):**
+    * `Image`: Represents a single abstract "moment" (groups RAW+JPG).
+    * `ImageFile`: Represents a concrete file on disk.
+    * `FileFormat` & `FileRole`: Enums for file classification (e.g., `ORIGINAL`, `SIDECAR`).
+* **Scanner Module (`src/python/home_media/scanner`):**
+    * **Function:** `scan_directory` traverses paths, groups related files, and extracts metadata.
+    * **Output:** Returns Pandas DataFrames (`images_df`, `files_df`).
+    * **Strategic Note:** This module will serve as the "Ingest Engine" for Phase 1, feeding data from the NAS into the PostgreSQL database.
+
+### Core Concepts
+
+#### Image vs ImageFile
 
 - **Image**: A moment in time - a single capture event
 - **ImageFile**: A file representing part of an Image (RAW, JPEG, XMP sidecar, etc.)
@@ -20,7 +95,7 @@ An Image may have multiple ImageFiles:
 - XMP sidecar with metadata and edits
 - Derivative versions (crops, edits)
 
-### File Roles
+#### File Roles
 
 Files are classified by their role in representing an Image:
 
@@ -30,119 +105,36 @@ Files are classified by their role in representing an Image:
 - **EXPORT**: Processed outputs
 - **DERIVATIVE**: Crops, edits, versions
 
-### File Grouping
-
-The system intelligently groups related files by their base name:
-
-- `IMG_1234.CR2` and `IMG_1234.jpg` → same Image
-- `PXL_20251210_200246684.RAW-02.ORIGINAL.dng` and `PXL_20251210_200246684.RAW-01.COVER.jpg` → same Image
-- `photo_001.jpg`, `photo_002.jpg` → different Images
-
-## Current Status
-
-[![Tests](https://github.com/ericwait/home-media-ai/actions/workflows/tests.yml/badge.svg)](https://github.com/ericwait/home-media-ai/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/badge/coverage-77%25-green)](htmlcov/index.html)
-[![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
-
-### Implemented
-
-- **Data Models** ([`home_media.models`](src/python/home_media/models/))
-    - `Image` and `ImageFile` dataclasses with pandas integration
-    - `FileFormat` and `FileRole` enumerations
-    - Lazy-loading support for EXIF metadata
-    - Support for 20+ file formats (CR2, CR3, NEF, ARW, DNG, JPEG, PNG, HEIC, etc.)
-
-- **Scanner Module** ([`home_media.scanner`](src/python/home_media/scanner/))
-    - Directory scanning with optional recursion
-    - File grouping by base name patterns
-    - DataFrame output for easy analysis
-    - EXIF metadata extraction (RAW and standard formats)
-    - File hash calculation for deduplication
-    - Image dimension extraction (width/height)
-    - Functions: `scan_directory`, `list_subdirectories`, `group_files_to_images`, `extract_base_name`, `extract_exif_metadata`
-
-- **Testing & CI/CD** ✨ **NEW!**
-    - 265 comprehensive unit tests (100% passing)
-    - 77% code coverage
-    - GitHub Actions workflows for multi-OS testing
-    - Automated coverage reporting
-    - See [TESTING.md](TESTING.md) for details
-
-- **Development Environment**
-    - Python 3.11 with Jupyter notebooks
-    - YAML-based configuration system
-    - Sandbox notebook for experimentation
-
-### Next Steps
-
-- Database schema design for media metadata storage
-- AI/ML integration for classification
-- Duplicate detection and file organization tools
-
-## Getting Started
-
-### 1. Set up the environment
-
+### Building and Running
+**Environment Setup:**
 ```bash
-# Create and activate conda environment
-conda env create -f environment.yaml
-conda activate home-media
-
-# Install package in development mode
+mamba env create -f environment.yaml
+mamba activate home-media
 pip install -e .
 ```
 
-### 2. Configure for your environment
+**Running Tests:**
 
 ```bash
-# Copy the template and edit with your values
-cd src/python
-cp config_template.yaml config.yaml
-# Edit config.yaml with your local paths
+pytest --cov=home_media --cov-report=term-missing
 ```
 
-### 3. Start using the package
-
-**In a Jupyter notebook:**
+**Example Usage:**
 
 ```python
-from home_media import scan_directory, Image, ImageFile
+from home_media import scan_directory
 from pathlib import Path
 
-# Scan a directory
-images_df, files_df = scan_directory(Path("/photos/2025/01/01"))
+# This logic will eventually reside inside the Phase 1 Ingest Script
+images_df, files_df = scan_directory(Path("/Volumes/Photos"))
 print(f"Found {len(images_df)} images with {len(files_df)} files")
-
-# Analyze the results
-print(images_df[['base_name', 'file_count', 'has_raw', 'has_jpeg']].head())
-
-# Scan with full metadata extraction
-images_df, files_df = scan_directory(
-    Path("/photos/2025/01/01"),
-    extract_exif=True,           # Extract EXIF metadata (camera, GPS, etc.)
-    calculate_hash=True,          # Calculate SHA256 for deduplication
-    extract_dimensions=True       # Extract image width/height
-)
-print(files_df[['filename', 'width', 'height', 'file_hash']].head())
 ```
 
-**In a Python script:**
-
-```python
-from home_media import list_subdirectories, scan_directory
-from pathlib import Path
-
-# List subdirectories
-photos_root = Path("/photos")
-subdirs = list_subdirectories(photos_root)
-
-# Scan each subdirectory
-for subdir in subdirs:
-    images_df, files_df = scan_directory(subdir, photos_root)
-    print(f"{subdir.name}: {len(images_df)} images")
-```
-
-See the [Python module README](src/python/home_media/README.md) for detailed API documentation.
+### Strategic Connection
+The existing `home-media` library is the **logic layer** for the new architecture.
+1.  **The API (MacBook)** will import `home_media.models` to understand what an "Image" is.
+2.  **The Ingester (MacBook)** will use `home_media.scanner` to crawl the NAS and populate the DB.
+3.  **The Worker (Alienware)** will eventually use `home_media` utilities to handle file path resolution when loading images for AI processing.
 
 ## Testing
 
@@ -165,45 +157,3 @@ pytest tests/scanner/       # Scanner tests only
 pytest -m unit             # Fast unit tests
 pytest -m "not slow"       # Skip slow tests
 ```
-
-### Test Results
-
-- ✅ **265 tests** all passing
-- ✅ **77% coverage** overall
-- ✅ **100% coverage** on core modules (enums, patterns, grouper)
-- ⚡ **1.84 seconds** total execution time
-
-See [FINAL_TEST_REPORT.md](FINAL_TEST_REPORT.md) for detailed test results.
-
-## Project Structure
-
-```text
-home-media-ai_scratch/
-├── environment.yaml              # Conda environment definition
-├── src/
-│   └── python/
-│       ├── config.yaml           # Environment-specific config (not in git)
-│       ├── config_template.yaml  # Config template (in git)
-│       ├── notebooks/            # Jupyter notebooks for exploration
-│       │   └── sandbox.ipynb     # Sandbox for testing and experiments
-│       └── home_media/           # Main Python package
-│           ├── models/           # Data models (Image, ImageFile, enums)
-│           ├── scanner/          # Directory scanning and file grouping
-│           ├── config/           # Configuration system
-│           ├── core/             # Core functionality (future)
-│           ├── media/            # Media handling (future)
-│           ├── ai/               # AI models (future)
-│           └── utils/            # Utilities (future)
-└── README.md
-```
-
-## Development Philosophy
-
-- **Incremental**: Build one small piece at a time
-- **Deliberate**: Understand each component before moving forward
-- **Stable**: Test and refine before expanding
-- **Meaningful**: Focus on solving real problems, not over-engineering
-
-## License
-
-MIT
