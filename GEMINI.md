@@ -111,3 +111,17 @@ The existing `home-media` library is the **logic layer** for the new architectur
 1.  **The API (MacBook)** will import `home_media.models` to understand what an "Image" is.
 2.  **The Ingester (MacBook)** will use `home_media.scanner` to crawl the NAS and populate the DB.
 3.  **The Worker (Alienware)** will eventually use `home_media` utilities to handle file path resolution when loading images for AI processing.
+
+---
+
+## 4. Documentation Standards
+When updating or creating Markdown files (like `README.md` or files in `docs/`), strictly adhere to the following conventions to ensure consistency and readability:
+
+1.  **Headings:** Ensure there is a blank line before and after all headings (H1, H2, H3, etc.).
+2.  **Lists:** Use a single space after a list marker (e.g., `- Item`, `1. Item`).
+3.  **Code Blocks:** Ensure there are blank lines surrounding fenced code blocks (before the opening ``` and after the closing ```).
+4.  **General Formatting:**
+    *   No trailing whitespace at the end of lines.
+    *   Use hyphens `-` for bulleted lists.
+    *   Maintain a single empty line between paragraphs.
+    *   Use backticks for inline code or file paths (e.g., `path/to/file`).

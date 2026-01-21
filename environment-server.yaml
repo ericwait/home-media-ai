@@ -1,0 +1,27 @@
+name: home-media-server
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # Core Library deps
+  - pandas
+  - pillow
+  - exifread
+  - pyyaml
+  
+  # Server Framework
+  - fastapi
+  - uvicorn-standard
+  - pydantic-settings
+  - python-multipart
+  
+  # Database & Queue
+  - sqlalchemy>=2.0
+  - asyncpg
+  - redis-py
+  
+  # Utilities
+  - httpx
+  - pip
+  - pip:
+    - . # Install local home-media package

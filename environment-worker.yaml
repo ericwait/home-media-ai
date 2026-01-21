@@ -1,0 +1,25 @@
+name: home-media-worker
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  # Core Library deps
+  - pandas
+  - pillow
+  - exifread
+  - pyyaml
+
+  # AI & GPU
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
+  - ultralytics        # YOLO
+  - redis-py
+  
+  # Utilities
+  - pip
+  - pip:
+    - segment-anything-py
+    - . # Install local home-media package
