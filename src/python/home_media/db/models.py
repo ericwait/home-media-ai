@@ -1,11 +1,11 @@
 """
 SQLAlchemy models for the Home Media database.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import JSONB
+
 
 # Import Enums from the core library
 from home_media.models.enums import FileFormat, FileRole
@@ -24,8 +24,8 @@ class ImageModel(Base):
     
     # Metadata
     captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now, onupdate=datetime.now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Camera/Lens Info
     camera_make: Mapped[Optional[str]] = mapped_column(String)

@@ -14,9 +14,6 @@ import argparse
 from pathlib import Path
 from typing import List, Dict, Any
 
-# Add src/python to path to allow imports
-sys.path.append(str(Path(__file__).parents[2]))
-
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select

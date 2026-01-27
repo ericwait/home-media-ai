@@ -7,11 +7,10 @@ Usage:
 """
 import asyncio
 import logging
+import re
 import sys
 from pathlib import Path
-
-# Add src/python to path to allow imports
-sys.path.append(str(Path(__file__).parents[2]))
+from urllib.parse import quote_plus
 
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
@@ -22,9 +21,28 @@ from home_media.db.models import Base
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def validate_db_identifier(name: str) -> None:
+    """
+    Validate that a database name is a safe PostgreSQL identifier.
+    
+    Args:
+        name: Database name to validate
+        
+    Raises:
+        ValueError: If the name contains invalid characters
+    """
+    if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', name):
+        raise ValueError(
+            f"Invalid database name '{name}'. Must start with a letter or underscore "
+            "and contain only letters, numbers, and underscores."
+        )
+
 async def create_database_if_not_exists(user, password, host, port, db_name):
     """Create the database if it doesn't exist using asyncpg."""
     import asyncpg
+    
+    # Validate database name to prevent SQL injection
+    validate_db_identifier(db_name)
 
     # Connect to the default 'postgres' database to perform administrative tasks
     sys_conn = await asyncpg.connect(
@@ -32,7 +50,8 @@ async def create_database_if_not_exists(user, password, host, port, db_name):
         password=password,
         host=host,
         port=port,
-        database='postgres'
+        database='postgres',
+        timeout=30
     )
 
     try:
@@ -54,7 +73,10 @@ async def create_database_if_not_exists(user, password, host, port, db_name):
 
 async def init_schema(user, password, host, port, db_name):
     """Initialize schema and extensions for a specific database."""
-    url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db_name}"
+    # URL-encode credentials to handle special characters
+    encoded_user = quote_plus(user)
+    encoded_password = quote_plus(password)
+    url = f"postgresql+asyncpg://{encoded_user}:{encoded_password}@{host}:{port}/{db_name}"
 
     logger.info(f"Initializing schema for {db_name}...")
     engine = create_async_engine(url, echo=False)

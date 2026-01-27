@@ -67,13 +67,12 @@ def get_photos_root(config: Dict[str, Any]) -> Path:
     Returns:
         Path to photos root directory
     """
-    root_str = config.get("photos_root_original")
-    if not root_str:
+    if root_str := config.get("photos_root_original"):
+        return Path(root_str)
+    else:
         # Fallback/Error if not defined. 
         # For now, let's raise because the system depends on it.
         raise ValueError("Config missing 'photos_root_original' setting.")
-    
-    return Path(root_str)
 
 
 def get_db_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,26 +85,39 @@ def get_db_config(config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dictionary containing database settings
     """
-    db_config = config.get("database")
-    if not db_config:
+    if db_config := config.get("database"):
+        return db_config
+    else:
         raise ValueError("Config missing 'database' section.")
-    return db_config
 
 
-def get_redis_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def get_redis_config(
+    config: Dict[str, Any],
+    use_defaults: bool = False,
+    logger: Optional[logging.Logger] = None
+) -> Dict[str, Any]:
     """
     Get the redis configuration from config.
 
     Args:
         config: Configuration dictionary
+        use_defaults: If True, return default values when redis section is missing.
+                     If False, raise ValueError when redis section is missing.
+        logger: Optional logger for warnings when using defaults
 
     Returns:
         Dictionary containing redis settings
+    
+    Raises:
+        ValueError: If redis section is missing and use_defaults is False
     """
     redis_config = config.get("redis")
     if not redis_config:
-        # Return default defaults if missing, or raise? 
-        # Better to return defaults or a minimal dict so callers can handle it
+        if not use_defaults:
+            raise ValueError("Config missing 'redis' section.")
+        # Log warning if logger is provided
+        if logger:
+            logger.warning("Config missing 'redis' section, using defaults (localhost:6379)")
         return {
             "host": "localhost",
             "port": 6379,

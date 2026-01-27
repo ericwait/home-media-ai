@@ -10,10 +10,6 @@ import logging
 import time
 from pathlib import Path
 
-# Add src/python to path to allow imports
-import sys
-sys.path.append(str(Path(__file__).parents[2]))
-
 from home_media.config import load_config, get_redis_config
 from home_media.utils import translate_path
 
@@ -47,7 +43,7 @@ def process_job(job_data, mapping):
 def main():
     try:
         config = load_config()
-        redis_config = get_redis_config(config)
+        redis_config = get_redis_config(config, use_defaults=True, logger=logger)
         path_mapping = config.get("path_mapping", {})
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
@@ -62,6 +58,8 @@ def main():
             db=redis_config.get('db', 0),
             decode_responses=True
         )
+        # Verify connectivity before entering processing loop
+        r.ping()
         logger.info(f"Connected to Redis at {redis_config['host']}:{redis_config['port']}")
     except Exception as e:
         logger.error(f"Failed to connect to Redis: {e}")
@@ -72,13 +70,19 @@ def main():
 
     while True:
         try:
-            # BLPOP blocks until a job is available
-            job = r.blpop(queue_name, timeout=5)
-            if job:
+            if job := r.blpop(queue_name, timeout=5):
                 _, data_str = job
                 logger.info(f"Received job: {data_str}")
-                job_data = json.loads(data_str)
-                process_job(job_data, path_mapping)
+                try:
+                    job_data = json.loads(data_str)
+                    process_job(job_data, path_mapping)
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        f"Failed to decode JSON from queue '{queue_name}': {e}. "
+                        f"Raw payload: {data_str!r}"
+                    )
+                    # Skip this malformed payload and continue to next job
+                    continue
         except KeyboardInterrupt:
             logger.info("Worker stopping...")
             break

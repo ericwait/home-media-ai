@@ -22,9 +22,8 @@ database:
 redis:
   host: "localhost"
   port: 6379
-  password: "your_redis_password"
+  password: "your_redis_password"  # Leave empty or omit if no auth
   db: 0
-
 # Path Mapping (for distributed access)
 # Maps paths from the Server (Mac) to the Worker (Windows)
 path_mapping:
