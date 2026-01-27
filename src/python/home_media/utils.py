@@ -5,9 +5,40 @@ Utility functions for HomeMedia.
 import logging
 import re
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
+
+
+def translate_path(path: str, mapping: Dict[str, str]) -> str:
+    """
+    Translate a path from one system's format to another using a mapping.
+
+    Useful for distributed systems where different nodes mount the same
+    storage at different paths (e.g., Mac /Volumes/Photos vs Windows Z:\\).
+
+    Args:
+        path: The original path string
+        mapping: Dictionary of {source_prefix: target_prefix}
+
+    Returns:
+        Translated path string. If no mapping matches, returns original path.
+    """
+    # Sort mappings by length (longest first) to ensure most specific match
+    sorted_mappings = sorted(mapping.items(), key=lambda x: len(x[0]), reverse=True)
+
+    # Normalize separators for comparison
+    normalized_path = path.replace("\\", "/")
+
+    for src, dst in sorted_mappings:
+        src_norm = src.replace("\\", "/")
+        if normalized_path.startswith(src_norm):
+            rel_path = normalized_path[len(src_norm):].lstrip("/")
+            # Use Path to handle OS-specific separators for the target
+            return str(Path(dst) / rel_path)
+
+    return path
 
 
 def parse_date_from_filename(filename: str) -> Optional[datetime]:

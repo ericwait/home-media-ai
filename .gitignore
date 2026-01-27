@@ -208,7 +208,9 @@ __marimo__/
 
 # HomeMedia AI specific
 # Exclude environment-specific config, but include template
+config.yaml
 src/python/config.yaml
+.home_media/
 *.log
 nul
 .vscode

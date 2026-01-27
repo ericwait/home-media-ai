@@ -1,25 +1,28 @@
 # GEMINI Project Context: home-media-ai
 
 ## 1. Project Vision & Architecture
+
 **Goal:** To build a distributed, private, AI-powered system for indexing, classifying, and curating a multi-terabyte home media collection. The system emphasizes "pixel-wise" understanding (segmentation), taxonomy management, and high-performance retrieval without relying on cloud services.
 
 ### The "3-Node" Distributed Architecture
+
 The system is split across three hardware nodes to balance storage capacity, always-on availability, and on-demand compute power.
 
-1.  **The Server (MacBook Pro):**
+1. **The Server (MacBook Pro):**
     * **Role:** The "Brain" and User Interface. Always-on (or wake-on-lan).
     * **Storage:** NVMe (Fast DB access) + DAS (Thumbnails/Proxies).
     * **Responsibilities:** Hosting the Web UI, API, Database, and Job Queue.
-2.  **The Vault (Synology NAS):**
+2. **The Vault (Synology NAS):**
     * **Role:** The "Library."
     * **Storage:** Spinning Disks (3.7 TB+).
     * **Responsibilities:** Storing the master RAW/JPEG files. Mounted via SMB/NFS to other nodes. Read-only for most processes; "Write-back" operations are strictly controlled via the API.
-3.  **The Worker (Alienware Laptop):**
+3. **The Worker (Alienware Laptop):**
     * **Role:** The "Muscle." On-demand.
     * **Hardware:** NVIDIA GPU.
     * **Responsibilities:** Running heavy AI inference (YOLO, SAM-2, CLIP). Connects to the Server to pull jobs, processes images from the Vault, and returns metadata/masks to the Server.
 
 ### The Tech Stack (The "Wait Stack")
+
 * **Core Library:** `home-media` (Python 3.11) - *See Section 3*.
 * **Database:** PostgreSQL (with `pgvector` for embeddings and `ltree` for taxonomy).
 * **Backend API:** FastAPI (Python).
@@ -33,6 +36,7 @@ The system is split across three hardware nodes to balance storage capacity, alw
 ---
 
 ## 2. Implementation Roadmap
+
 The project is executed in prioritized phases. We are currently transitioning from Phase 0 to Phase 1.
 
 * **Phase 0: Infrastructure (Done/In Progress)**
@@ -62,9 +66,11 @@ The project is executed in prioritized phases. We are currently transitioning fr
 ---
 
 ## 3. Current Library Implementation (`home-media`)
+
 The `home-media` Python library is the foundation of this system. It is currently designed to be imported by the future API and Worker scripts to handle the low-level file operations.
 
 ### Key Components
+
 * **Technology Stack**: Python 3.11 (Conda/Mamba), Pandas, Pillow, ExifRead, Pytest.
 * **Data Models (`src/python/home_media/models`):**
     * `Image`: Represents a single abstract "moment" (groups RAW+JPG).
@@ -76,12 +82,15 @@ The `home-media` Python library is the foundation of this system. It is currentl
     * **Strategic Note:** This module will serve as the "Ingest Engine" for Phase 1, feeding data from the NAS into the PostgreSQL database.
 
 ### Development Conventions
+
 * **Testing:** High coverage (80%+) using `pytest`. Tests are marked `unit`, `integration`, and `slow`.
 * **CI/CD:** GitHub Actions for cross-platform testing (Windows, macOS, Ubuntu).
 * **Style:** Type hints, dataclasses, and strict modularity.
 
 ### Building and Running
+
 **Environment Setup:**
+
 ```bash
 mamba env create -f environment.yaml
 mamba activate home-media
@@ -107,21 +116,24 @@ images_df, files_df = scan_directory(Path("/Volumes/Photos"))
 ```
 
 ### Strategic Connection
+
 The existing `home-media` library is the **logic layer** for the new architecture.
-1.  **The API (MacBook)** will import `home_media.models` to understand what an "Image" is.
-2.  **The Ingester (MacBook)** will use `home_media.scanner` to crawl the NAS and populate the DB.
-3.  **The Worker (Alienware)** will eventually use `home_media` utilities to handle file path resolution when loading images for AI processing.
+
+1. **The API (MacBook)** will import `home_media.models` to understand what an "Image" is.
+2. **The Ingester (MacBook)** will use `home_media.scanner` to crawl the NAS and populate the DB.
+3. **The Worker (Alienware)** will eventually use `home_media` utilities to handle file path resolution when loading images for AI processing.
 
 ---
 
 ## 4. Documentation Standards
+
 When updating or creating Markdown files (like `README.md` or files in `docs/`), strictly adhere to the following conventions to ensure consistency and readability:
 
-1.  **Headings:** Ensure there is a blank line before and after all headings (H1, H2, H3, etc.).
-2.  **Lists:** Use a single space after a list marker (e.g., `- Item`, `1. Item`).
-3.  **Code Blocks:** Ensure there are blank lines surrounding fenced code blocks (before the opening ``` and after the closing ```).
-4.  **General Formatting:**
-    *   No trailing whitespace at the end of lines.
-    *   Use hyphens `-` for bulleted lists.
-    *   Maintain a single empty line between paragraphs.
-    *   Use backticks for inline code or file paths (e.g., `path/to/file`).
+1. **Headings:** Ensure there is a blank line before and after all headings (H1, H2, H3, etc.).
+2. **Lists:** Use a single space after a list marker (e.g., `- Item`, `1. Item`).
+3. **Code Blocks:** Ensure there are blank lines surrounding fenced code blocks (before the opening ``` and after the closing ```).
+4. **General Formatting:**
+    * No trailing whitespace at the end of lines.
+    * Use hyphens `-` for bulleted lists.
+    * Maintain a single empty line between paragraphs.
+    * Use backticks for inline code or file paths (e.g., `path/to/file`).

@@ -7,3 +7,25 @@
 
 # Root directory where original photos are stored
 photos_root_original: "/path/to/your/photos"
+
+# Database Configuration
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "your_password_here"
+  # Database names
+  name_prod: "home_media_prod"
+  name_dev: "home_media_dev"
+
+# Redis Configuration (Message Queue)
+redis:
+  host: "localhost"
+  port: 6379
+  password: "your_redis_password"
+  db: 0
+
+# Path Mapping (for distributed access)
+# Maps paths from the Server (Mac) to the Worker (Windows)
+path_mapping:
+  "/Volumes/Photos": "Z:\\photos"

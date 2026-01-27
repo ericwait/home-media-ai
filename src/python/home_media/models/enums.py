@@ -134,8 +134,8 @@ class FileFormat(Enum):
     @property
     def is_sidecar(self) -> bool:
         """Check if this format is a sidecar/metadata format."""
-        # THM ignored for now as we don't handle video
-        return self in (FileFormat.XMP,)
+        # Include THM as sidecar even if video support is pending
+        return self in (FileFormat.XMP, FileFormat.THM)
 
     @property
     def is_video(self) -> bool:

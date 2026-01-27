@@ -74,3 +74,42 @@ def get_photos_root(config: Dict[str, Any]) -> Path:
         raise ValueError("Config missing 'photos_root_original' setting.")
     
     return Path(root_str)
+
+
+def get_db_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Get the database configuration from config.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Dictionary containing database settings
+    """
+    db_config = config.get("database")
+    if not db_config:
+        raise ValueError("Config missing 'database' section.")
+    return db_config
+
+
+def get_redis_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Get the redis configuration from config.
+
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Dictionary containing redis settings
+    """
+    redis_config = config.get("redis")
+    if not redis_config:
+        # Return default defaults if missing, or raise? 
+        # Better to return defaults or a minimal dict so callers can handle it
+        return {
+            "host": "localhost",
+            "port": 6379,
+            "password": None,
+            "db": 0
+        }
+    return redis_config
