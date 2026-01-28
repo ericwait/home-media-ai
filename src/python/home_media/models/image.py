@@ -420,19 +420,23 @@ class Image:
 
         # Extract EXIF data
         exif_data = extract_exif_metadata(target_file)
-        if exif_data is None:
-            return False
-
-        # Populate Image fields
-        self.captured_at = exif_data.captured_at
-        self.camera_make = exif_data.camera_make
-        self.camera_model = exif_data.camera_model
-        self.lens = exif_data.lens
-        self.gps_latitude = exif_data.gps_latitude
-        self.gps_longitude = exif_data.gps_longitude
-        self.title = exif_data.title
-        self.description = exif_data.description
-        self.rating = exif_data.rating
+        
+        if exif_data:
+            # Populate Image fields from EXIF
+            self.captured_at = exif_data.captured_at
+            self.camera_make = exif_data.camera_make
+            self.camera_model = exif_data.camera_model
+            self.lens = exif_data.lens
+            self.gps_latitude = exif_data.gps_latitude
+            self.gps_longitude = exif_data.gps_longitude
+            self.title = exif_data.title
+            self.description = exif_data.description
+            self.rating = exif_data.rating
+        
+        # Fallback: If captured_at is still None (no EXIF or no date in EXIF),
+        # use the earliest file creation date.
+        if self.captured_at is None:
+            self.captured_at = self.earliest_file_date
 
         self.updated_at = datetime.now()
         return True
