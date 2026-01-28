@@ -133,6 +133,7 @@ async def ingest_batch(session: AsyncSession, images: List[DomainImage]):
 
 async def main():
     parser = argparse.ArgumentParser(description="Ingest photos into database")
+    parser.add_argument("--path", type=str, help="Specific subfolder to scan (relative to photos root or absolute)")
     parser.add_argument("--dry-run", action="store_true", help="Scan only, do not write to DB")
     parser.add_argument("--extract-exif", action="store_true", help="Extract EXIF metadata (slower)")
     parser.add_argument("--extract-dims", action="store_true", help="Extract dimensions (slower)")
@@ -150,13 +151,21 @@ async def main():
         return
 
     # 1. Scan Directory
-    logger.info(f"Scanning directory: {photos_root}")
-    if not photos_root.exists():
-        logger.error(f"Photos root does not exist: {photos_root}")
+    scan_root = photos_root
+    if args.path:
+        provided_path = Path(args.path)
+        if provided_path.is_absolute():
+            scan_root = provided_path
+        else:
+            scan_root = photos_root / args.path
+
+    logger.info(f"Scanning directory: {scan_root}")
+    if not scan_root.exists():
+        logger.error(f"Scan directory does not exist: {scan_root}")
         return
 
     # Use internal scanner logic to get objects directly
-    files = _collect_files(photos_root, recursive=True, include_sidecars=True)
+    files = _collect_files(scan_root, recursive=True, include_sidecars=True)
     logger.info(f"Found {len(files)} files. Grouping...")
     
     images = group_files_to_images(files, photos_root)

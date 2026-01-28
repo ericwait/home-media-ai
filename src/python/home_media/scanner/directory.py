@@ -130,6 +130,10 @@ def _collect_files(
         # Skip hidden files
         if path.name.startswith("."):
             continue
+            
+        # Skip Synology @eaDir and other system folders
+        if "@eaDir" in path.parts:
+            continue
 
         # Check if it's an image or sidecar file
         if is_image_file(path.name):

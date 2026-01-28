@@ -113,9 +113,12 @@ def extract_exif_metadata(file_path: Path) -> Optional[ExifData]:
         # For RAW files and HEIC/HEIF (which Pillow often can't handle without plugins), use exifread
         if file_format.is_raw or file_format in (FileFormat.HEIC, FileFormat.HEIF):
             return _extract_with_exifread(file_path)
-        # For standard formats, use Pillow
-        else:
+        # For standard image formats, use Pillow
+        elif file_format.is_image:
             return _extract_with_pillow(file_path)
+        else:
+            logger.debug("Skipping EXIF extraction for non-image format: %s", file_format)
+            return None
     except Exception as e:
         logger.error("Failed to extract EXIF from %s: %s", file_path, e)
         return None
